@@ -12,7 +12,7 @@ def tqdm2(iterable, **kwargs):
 
 
 # Light function for heavy corner plots:
-def corner_plot(df: pd.DataFrame, df2: pd.DataFrame = None, data_labels: list[str] | None = None, normalize_hist: bool = True) -> None:
+def corner_plot(df: pd.DataFrame, df2: pd.DataFrame = None, data_labels: list[str] | None = None, normalize_hist: bool = True, alpha: float = .1) -> None:
     """Make a corner plot which dimension is the number of columns of the DataFrame.  
     This function aims to be faster than other high level cornerplot functions such as seaborn's pairplot or corner.py in order to have higher dimensionnal plots quicker.
 
@@ -21,6 +21,7 @@ def corner_plot(df: pd.DataFrame, df2: pd.DataFrame = None, data_labels: list[st
         df2 (pd.DataFrame, optional): Second DataFrame with same columns as df to be plotted with a different color. Defaults to None.
         data_labels (list[str], optional): To be used when df2 is not None. Should contain the two labels for the data from df1 and df2. Defaults to None.
         normalize_hist (bool, optional): If True, the histograms will be normalized. Defaults to True.
+        alpha (float, optional): Transparency for the scatter plots. Defaults to .1.
     """
 
     # Handling user input errors:
@@ -52,9 +53,9 @@ def corner_plot(df: pd.DataFrame, df2: pd.DataFrame = None, data_labels: list[st
     for i in range(1, n):
         for j in range(i, n):
             plt.subplot(n, n, j*n + i)
-            plt.scatter(df[feature_pairs[pair][0]], df[feature_pairs[pair][1]], s=1, alpha=0.1)
+            plt.scatter(df[feature_pairs[pair][0]], df[feature_pairs[pair][1]], s=1, alpha=alpha)
             if df2 is not None:
-                plt.scatter(df2[feature_pairs[pair][0]], df2[feature_pairs[pair][1]], s=1, alpha=0.1)
+                plt.scatter(df2[feature_pairs[pair][0]], df2[feature_pairs[pair][1]], s=1, alpha=alpha)
             if i == 1:
                 plt.ylabel(feature_pairs[pair][1])
             else:
