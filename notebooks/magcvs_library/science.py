@@ -113,7 +113,7 @@ def sort_negative(negative_lc: pd.DataFrame, positive_Ids: list[str]):
     # Splitting data by filter:
     negative_lc_g = pd.DataFrame(columns=['objectId','time_range (yr)', 'nb_of_points', 'i:jd', 'i:magpsf', 'i:sigmapsf'])
     negative_lc_r = pd.DataFrame(columns=['objectId','time_range (yr)', 'nb_of_points', 'i:jd', 'i:magpsf', 'i:sigmapsf'])
-    for _, row in tqdm2(list(negative_lc.iterrows())): # Remove list() here for slight better efficiency but no progress bar
+    for _, row in tqdm2(list(negative_lc.iterrows()), desc='Splitting data by filter'): # Remove list() here for slight better efficiency but no progress bar
         jd_g, magpsf_g, sigmapsf_g = np.array([]), np.array([]), np.array([])
         jd_r, magpsf_r, sigmapsf_r = np.array([]), np.array([]), np.array([])
         for index, fid in enumerate(row['i:fid']):
@@ -205,7 +205,7 @@ def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False)
 
     # Extracting the features for each object in the light curve data:
     features = []
-    for line in tqdm2(range(len(light_curve_data))):
+    for line in tqdm2(range(len(light_curve_data)), desc='Extracting features'):
         features.append(extractor(light_curve_data['i:jd'][line],
                                   light_curve_data['i:magpsf'][line],
                                   light_curve_data['i:sigmapsf'][line],
