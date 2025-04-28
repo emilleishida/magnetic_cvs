@@ -37,7 +37,7 @@ def get_lightcurve_data(Ids: list[str] | str, cut: int = 4, split_by_filter: boo
         data_g, data_r: pd.DataFrame, pd.DataFrame
             Light curve data for the g and r filters in separated dataframes. Returned if split_by_filter is True.
 
-         data: pd.DataFrame
+        data: pd.DataFrame
             Light curve data for both filters in one dataframe. Returned if split_by_filter is False.
     """
 
@@ -126,16 +126,34 @@ def sort_negative(negative_lc: pd.DataFrame, positive_Ids: list[str]):
                 magpsf_r = np.append(magpsf_r, row['i:magpsf'][index])
                 sigmapsf_r = np.append(sigmapsf_r, row['i:sigmapsf'][index])
         if len(jd_g) >= 4:
-            new_row_g = pd.DataFrame([dict(zip(negative_lc_g.columns, [row['objectId'], round((max(jd_g)-min(jd_g))/365, 2), len(jd_g), jd_g, magpsf_g, sigmapsf_g]))])
+            sorted_indices_g = np.argsort(jd_g)
+            new_row_g = pd.DataFrame([dict(zip(negative_lc_g.columns,
+                                               [
+                                                   row['objectId'],
+                                                   round((max(jd_g)-min(jd_g))/365, 3),
+                                                   len(jd_g),
+                                                   jd_g[sorted_indices_g],
+                                                   magpsf_g[sorted_indices_g],
+                                                   sigmapsf_g[sorted_indices_g]
+                                                ]))])
             negative_lc_g = pd.concat([negative_lc_g, new_row_g], ignore_index=True)
         if len(jd_r) >= 4:
-            new_row_r = pd.DataFrame([dict(zip(negative_lc_r.columns, [row['objectId'], round((max(jd_r)-min(jd_r))/365, 2), len(jd_r), jd_r, magpsf_r, sigmapsf_r]))])
+            sorted_indices_r = np.argsort(jd_r)
+            new_row_r = pd.DataFrame([dict(zip(negative_lc_r.columns,
+                                               [
+                                                   row['objectId'],
+                                                   round((max(jd_r)-min(jd_r))/365, 3),
+                                                   len(jd_r),
+                                                   jd_r[sorted_indices_r],
+                                                   magpsf_r[sorted_indices_r],
+                                                   sigmapsf_r[sorted_indices_r]
+                                                ]))])
             negative_lc_r = pd.concat([negative_lc_r, new_row_r], ignore_index=True)
 
     return negative_lc_g, negative_lc_r
 
 
-def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False) -> pd.DataFrame:
+def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False, **kwargs) -> pd.DataFrame:
     """
     Extracts statistical features from light curve data using the light_curve library.
 
@@ -143,11 +161,14 @@ def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False)
     ---
         light_curve_data: pd.DataFrame
             A DataFrame containing light curve data with columns 'i:jd', 'i:magpsf', and 'i:sigmapsf'.  
-            Each row should represent the light curve data for a single object in a single band.  
-            Light curve data should be sorted by ascending Julian date and should not contain any missing values.
+            Each row should represent the light curve data for a single object in a single band.
 
         return_names: bool, optional
             If True, also returns the names of the extracted features. Defaults to False.
+
+        **kwargs: optional
+            Additional keyword arguments to be passed to the light_curve extractor. Default arguments are sorted=True and check=False,
+            supposing the light curve data is sorted by ascending Julian date and does not contain any missing values.
 
     Returns
     ---
@@ -159,57 +180,65 @@ def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False)
             A list of the names of the extracted features.
     """
 
-    # Initializing features with the light_curve library:
-    mean = lc.Mean()
-    weighted_mean = lc.WeightedMean()
-    standard_deviation = lc.StandardDeviation()
-    median = lc.Median()
-    amplitude = lc.Amplitude()
-    beyond_1_std = lc.BeyondNStd(nstd=1)
-    cusum = lc.Cusum()
-    inter_percentile_range_10 = lc.InterPercentileRange()
-    kurtosis = lc.Kurtosis()
-    linear_trend = lc.LinearTrend()
-    linear_fit_slope = lc.LinearFit()
-    magnitude_percentage_ratio_40_5 = lc.MagnitudePercentageRatio(quantile_numerator=.4, quantile_denominator=.05)
-    magnitude_percentage_ratio_20_10 = lc.MagnitudePercentageRatio(quantile_numerator=.2, quantile_denominator=.1)
-    maximum_slope = lc.MaximumSlope()
-    median_absolute_deviation = lc.MedianAbsoluteDeviation()
-    median_buffer_range_percentage_10 = lc.MedianBufferRangePercentage(quantile=.1)
-    percent_amplitude = lc.PercentAmplitude()
-    mean_variance = lc.MeanVariance()
-    anderson_darling_normal = lc.AndersonDarlingNormal()
-    chi2 = lc.ReducedChi2()
-    skew = lc.Skew()
-    stetson_K = lc.StetsonK()
-    eta = lc.Eta()
-    eta_e = lc.EtaE()
-    excess_var = lc.ExcessVariance()
-    otsu_split = lc.OtsuSplit()
-    percent_diff_mag_percentile = lc.PercentDifferenceMagnitudePercentile()
-    robust_median_statistic = lc.Roms()
-    beyond_2_std = lc.BeyondNStd(nstd=2)
-    # The three features below are experimental, conflicts with extractor.names, might implement in the future:
-    #fluxN_not_det_before_Fd = lc.FluxNNotDetBeforeFd()
-    #magN_not_det_before_Fd = lc.MagnitudeNNotDetBeforeFd()
-    #ptp_var = lc.PeakToPeakVar()
+    default_kwargs = {'sorted': True, 'check': False}
+    default_kwargs.update(**kwargs)
+    
+    extractor1 = lc.Extractor(
+        lc.Mean(),
+        lc.WeightedMean(),
+        lc.StandardDeviation(),
+        lc.Median(),
+        lc.Amplitude(),
+        lc.BeyondNStd(nstd=1),
+        lc.Cusum(),
+        lc.InterPercentileRange(),
+        lc.Kurtosis(),
+        lc.LinearTrend(),
+        lc.LinearFit(),
+        lc.MagnitudePercentageRatio(quantile_numerator=.4, quantile_denominator=.05),
+        lc.MagnitudePercentageRatio(quantile_numerator=.2, quantile_denominator=.1),
+        lc.MaximumSlope(),
+        lc.MedianAbsoluteDeviation(),
+        lc.MedianBufferRangePercentage(quantile=.1),
+        lc.PercentAmplitude(),
+        lc.MeanVariance(),
+        lc.AndersonDarlingNormal(),
+        lc.ReducedChi2(),
+        lc.Skew(),
+        lc.StetsonK(),
+        lc.Eta(),
+        lc.EtaE(),
+        lc.ExcessVariance(),
+        lc.OtsuSplit(),
+        lc.PercentDifferenceMagnitudePercentile(),
+        lc.Roms(),
+        lc.BeyondNStd(nstd=2),
+    )
+    # Periodogram requires an extractor in which we will not pass the uncertainties:
+    extractor2 = lc.Extractor(
+        lc.Periodogram(peaks=1, features=[lc.Amplitude()])
+    )
 
-    extractor = lc.Extractor(mean, weighted_mean, standard_deviation, median, amplitude, beyond_1_std,
-                            cusum, inter_percentile_range_10, kurtosis, linear_trend, linear_fit_slope,
-                            magnitude_percentage_ratio_40_5, magnitude_percentage_ratio_20_10, maximum_slope,
-                            median_absolute_deviation, median_buffer_range_percentage_10, percent_amplitude,
-                            mean_variance, anderson_darling_normal, chi2, skew, stetson_K,
-                            eta, eta_e, excess_var, otsu_split,
-                            percent_diff_mag_percentile, robust_median_statistic, beyond_2_std)
-    feature_names = extractor.names    
+    # The features below are experimental, conflicts with extractor.names, might implement in the future:
+    #lc.FluxNNotDetBeforeFd()
+    #lc.MagnitudeNNotDetBeforeFd()
+    #lc.PeakToPeakVar()
+
+    feature_names = extractor1.names + extractor2.names
 
     # Extracting the features for each object in the light curve data:
     features = []
     for line in tqdm2(range(len(light_curve_data)), desc='Extracting features'):
-        features.append(extractor(light_curve_data['i:jd'][line],
-                                  light_curve_data['i:magpsf'][line],
-                                  light_curve_data['i:sigmapsf'][line],
-                                  sorted=True, check=False)) # Here, sorted and check are set to True and False resp. but they could be passed as kwargs in the future for more flexibility.
+        features1 = extractor1(light_curve_data['i:jd'][line],
+                               light_curve_data['i:magpsf'][line],
+                               light_curve_data['i:sigmapsf'][line],
+                               **default_kwargs)
+
+        features2 = extractor2(light_curve_data['i:jd'][line],
+                               light_curve_data['i:magpsf'][line],
+                               **default_kwargs)
+
+        features.append(np.append(features1, features2))
 
     output_df = light_curve_data.drop(columns=['i:jd', 'i:magpsf', 'i:sigmapsf'])
     output_df[feature_names] = np.vstack(features)
