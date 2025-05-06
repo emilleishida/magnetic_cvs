@@ -4,7 +4,7 @@ import io
 import requests
 from sklearn.neighbors import NearestNeighbors
 import light_curve as lc
-from magcvs_library.utils import tqdm2
+from .utils import tqdm2
 
 
 # Wrapper for fink api (to be modified for more options... - look in fink api doc the columns available for json argument):
@@ -184,40 +184,48 @@ def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False,
     default_kwargs.update(**kwargs)
     
     extractor1 = lc.Extractor(
-        lc.Mean(),
-        lc.WeightedMean(),
-        lc.StandardDeviation(),
-        lc.Median(),
         lc.Amplitude(),
-        lc.BeyondNStd(nstd=1),
-        lc.Cusum(),
-        lc.InterPercentileRange(),
-        lc.Kurtosis(),
-        lc.LinearTrend(),
-        lc.LinearFit(),
-        lc.MagnitudePercentageRatio(quantile_numerator=.4, quantile_denominator=.05),
-        lc.MagnitudePercentageRatio(quantile_numerator=.2, quantile_denominator=.1),
-        lc.MaximumSlope(),
-        lc.MedianAbsoluteDeviation(),
-        lc.MedianBufferRangePercentage(quantile=.1),
-        lc.PercentAmplitude(),
-        lc.MeanVariance(),
         lc.AndersonDarlingNormal(),
-        lc.ReducedChi2(),
-        lc.Skew(),
-        lc.StetsonK(),
+        lc.BeyondNStd(nstd=1),
+        lc.BeyondNStd(nstd=2),
+        lc.Cusum(),
         lc.Eta(),
         lc.EtaE(),
         lc.ExcessVariance(),
+        lc.InterPercentileRange(quantile=.25),
+        lc.InterPercentileRange(quantile=.10),
+        lc.Kurtosis(),
+        lc.LinearFit(),
+        lc.LinearTrend(),
+        lc.MagnitudePercentageRatio(quantile_numerator=.4, quantile_denominator=.05),
+        lc.MagnitudePercentageRatio(quantile_numerator=.2, quantile_denominator=.1),
+        lc.MaximumSlope(),
+        lc.Mean(),
+        lc.MeanVariance(),
+        lc.Median(),
+        lc.MedianAbsoluteDeviation(),
+        lc.MedianBufferRangePercentage(quantile=.1),
         lc.OtsuSplit(),
-        lc.PercentDifferenceMagnitudePercentile(),
+        lc.PercentAmplitude(),
+        lc.PercentDifferenceMagnitudePercentile(quantile=.05),
+        lc.PercentDifferenceMagnitudePercentile(quantile=.20),
+        lc.ReducedChi2(),
         lc.Roms(),
-        lc.BeyondNStd(nstd=2),
+        lc.Skew(),
+        lc.StandardDeviation(),
+        lc.StetsonK(),
+        lc.WeightedMean(),
     )
     # Periodogram requires an extractor in which we will not pass the uncertainties:
     extractor2 = lc.Extractor(
-        lc.Periodogram(peaks=1, features=[lc.Amplitude()])
-    )
+        lc.Periodogram(peaks=3, features=[lc.Amplitude(),
+                                          lc.BeyondNStd(nstd=1),
+                                          lc.BeyondNStd(nstd=2),
+                                          lc.Cusum(),
+                                          lc.Eta(),
+                                          lc.InterPercentileRange(quantile=.25),
+                                          lc.StandardDeviation(),
+                                          lc.PercentAmplitude()]))
 
     # The features below are experimental, conflicts with extractor.names, might implement in the future:
     #lc.FluxNNotDetBeforeFd()
@@ -249,12 +257,20 @@ def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False,
         return output_df
 
 
-def find_candidates(positive: pd.DataFrame, feature_space: pd.DataFrame, n_neighbors: int = 3, candidate_threshold: int = 2, max_candidates: int | None = None, feature_names: list[str] | None = None):
+def find_candidates(positive: pd.DataFrame,
+                    feature_space: pd.DataFrame,
+                    *,
+                    n_neighbors: int = 3,
+                    score_threshold: int = 1,
+                    max_candidates: int | None = 5,
+                    feature_names: list[str] | None = None,
+                    kept_columns: list[str] = ['objectId']
+                    ) -> pd.DataFrame:
     """
     Evaluates candidates for the positive class among given objects in the feature space using the nearest neighbors algorithm on given positive class objects.  
-    The candidates are objects that appear more than 'candidate_threshold' times in the nearest neighbors of the positive objects.  
-    The inputted DataFrames (positive & feature_space) should contain the same features (feature_names) and have columns 'objectId', 'time_range (yr)', 'nb_of_points', 'class'.  
-    Returns the candidates in a DataFrame
+    The candidates are objects that appear the most in the nearest neighbors of the positive objects.  
+    The inputted DataFrames (positive & feature_space) should contain the same features (feature_names) and have the column 'objectId'.  
+    Returns the candidates in a DataFrame with their corresponding score (number of times they appear in the nearest neighbors of the positive objects).
 
     Parameters
     ---
@@ -265,16 +281,19 @@ def find_candidates(positive: pd.DataFrame, feature_space: pd.DataFrame, n_neigh
             DataFrame containing the features of all objects to evaluate.
 
         n_neighbors: int, optional
-            Number of neighbors for the nearest neighbors algorithm. Defaults to 3
+            Number of neighbors for the nearest neighbors algorithm. Defaults to 3.
 
-        candidate_threshold: int, optional
-            Parameter for candidate evaluation. Defaults to 2
+        score_threshold: int, optional
+            Minimum score for a candidate to be considered. Defaults to 1.
 
-        max_candidates: int, optional
-            Maximum number of candidates to return. If None, there are no limit. Defaults to None
+        max_candidates: int | None, optional
+            Maximum number of candidates to return. If None, returns all the nearest neighbors of the positive objects. Defaults to 5.
 
         feature_names: list[str] | None, optional
-            List of feature names to use for the nearest neighbors algorithm. If None, default feature names are used. Defaults to None
+            List of feature names to use for the nearest neighbors algorithm. If None, default feature names are used. Defaults to None.
+
+        kept_columns: list[str], optional
+            List of columns to keep in the output DataFrame. Note that if different from default, it should still include 'objectId'. Defaults to ['objectId'].
 
     Returns
     ---
@@ -283,13 +302,18 @@ def find_candidates(positive: pd.DataFrame, feature_space: pd.DataFrame, n_neigh
     """
 
     if feature_names is None: # If no feature names are provided, use the default ones:
-        feature_names = ['mean', 'weighted_mean', 'standard_deviation', 'median', 'amplitude', 'beyond_1_std', 'cusum', 'inter_percentile_range_25', 'kurtosis',
-                         'linear_trend', 'linear_trend_sigma', 'linear_trend_noise', 'linear_fit_slope', 'linear_fit_slope_sigma', 'linear_fit_reduced_chi2',
-                         'magnitude_percentage_ratio_40_5', 'magnitude_percentage_ratio_20_10', 'maximum_slope', 'median_absolute_deviation',
-                         'median_buffer_range_percentage_10', 'percent_amplitude', 'mean_variance', 'anderson_darling_normal', 'chi2', 'skew', 'stetson_K',
-                         'eta', 'eta_e', 'excess_variance', 'otsu_mean_diff', 'otsu_std_lower', 'otsu_std_upper', 'otsu_lower_to_all_ratio',
-                         'percent_difference_magnitude_percentile_5', 'roms', 'beyond_2_std']
-
+        feature_names = ['mean', 'weighted_mean', 'standard_deviation', 'median', 'amplitude',
+       'beyond_1_std', 'cusum', 'inter_percentile_range_25', 'kurtosis',
+       'linear_trend', 'linear_trend_sigma', 'linear_trend_noise',
+       'linear_fit_slope', 'linear_fit_slope_sigma', 'linear_fit_reduced_chi2',
+       'magnitude_percentage_ratio_40_5', 'magnitude_percentage_ratio_20_10',
+       'maximum_slope', 'median_absolute_deviation',
+       'median_buffer_range_percentage_10', 'percent_amplitude',
+       'mean_variance', 'anderson_darling_normal', 'chi2', 'skew', 'stetson_K',
+       'eta', 'eta_e', 'excess_variance', 'otsu_mean_diff', 'otsu_std_lower',
+       'otsu_std_upper', 'otsu_lower_to_all_ratio',
+       'percent_difference_magnitude_percentile_5', 'roms', 'beyond_2_std',
+       'period_0', 'period_s_to_n_0', 'periodogram_amplitude']
 
     # Finding the nearest neighbors of positive objects:
     neigh = NearestNeighbors(n_neighbors=n_neighbors).fit(feature_space[feature_names])
@@ -299,21 +323,15 @@ def find_candidates(positive: pd.DataFrame, feature_space: pd.DataFrame, n_neigh
     # Ids of the neighbors and the number of times each id appears:
     ids, counts = np.unique(neighbors['objectId'], return_counts=True)
 
-    # Creating the DataFrame that will store the candidates:
-    candidates = pd.DataFrame(columns=[*feature_space.keys(), 'score'])
+    candidates = pd.DataFrame({'objectId': ids, 'score': counts}).sort_values(by='score', ascending=False).reset_index(drop=True)
 
-    # Adding the candidates to the DataFrame:
-    for id, score in zip(ids, counts):
-        if score > candidate_threshold: # An object is considered as a candidate if it appears more than 'candidate_threshold' times in the neighbors
-            # Put the candidate in the candidates DataFrame with its associated score:
-            candidate = feature_space[feature_space['objectId'] == id].iloc[0]
-            candidate['score'] = score
-            candidates = pd.concat([candidates, candidate.to_frame().T], ignore_index=True)
-
-    # Sorting the candidates by the number of times they appear in the neighbors:
-    candidates = candidates.sort_values(by='score', ascending=False).reset_index(drop=True)
+    # Adding the time range, number of points and class to the candidates:
+    candidates = pd.merge(candidates, feature_space[[*kept_columns]], on='objectId', how='left')
+    # Removing duplicates:
+    candidates = candidates.drop_duplicates(subset=['objectId'], keep='first').reset_index(drop=True)
 
     if max_candidates is None:
-        return candidates
+        return candidates[candidates['score'] >= score_threshold] # Returning only the candidates with a score above the threshold.
     else:
-        return candidates.iloc[:max_candidates] # Returning only the first 'max_candidates' candidates.
+        candidates = candidates.iloc[:max_candidates] # Returning only the first 'max_candidates' candidates.
+        return candidates[candidates['score'] >= score_threshold]
