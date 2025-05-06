@@ -4,6 +4,7 @@ import numpy as np
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from itertools import combinations
+from IPython.display import clear_output
 from .utils import tqdm2
 from .science import find_candidates
 
@@ -157,7 +158,7 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
                                 n_neighbors_list: list[int] = [1, 2, 3],
                                 **kwargs) -> None:
     """
-    Function to evaluate and plot the mean accuracy (proportion of candidates that are of the positive class) as a function of the number of neighbors and given other parameters.
+    Function to evaluate and plot the distribution of the accuracy (proportion of candidates that are of the positive class) as a function of the number of neighbors and given other parameters.
 
     Parameters
     ---
@@ -174,7 +175,7 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
             Number of objects to be sampled from negative. Defaults to 2_000.
 
         N: int, optional
-            Number of iterations on which to compute the mean. At each iteration, a new random sample is taken from negative. Defaults to 100.
+            Number of iterations on which to compute the accuracy. At each iteration, a new random sample is taken from negative and positive. Defaults to 100.
 
         n_neighbors_list: list, optional
             List of number of nearest neighbors to be explored. Defaults to [1, 2, 3].
@@ -239,4 +240,58 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
     plt.ylabel('Accuracy distribution (%)')
     plt.grid(axis='y')
 
+    return
+
+
+def explore_params(positive: pd.DataFrame,
+                   negative: pd.DataFrame,
+                   title: str,
+                   nb_positive_objects_to_be_found: list[int] = [1, 2, 5],
+                   score_thresholds: list[int] = [5, 6, 7, 8, 9, 10, 11, 12],
+                   N: int = 100) -> None:
+    """
+    Wrapper function of the accuracy_versus_n_neighbors function to explore the parameters of the algorithm.
+
+    Parameters
+    ---
+        positive: pd.DataFrame
+            Feature data of positive objects.
+
+        negative: pd.DataFrame
+            Feature data of negative objects.
+
+        title: str
+            Title of the plot.
+
+        nb_positive_objects_to_be_found: list[int]
+            List of number of objects to sample from positive and to be found by the algorithm. Defaults to [1, 2, 5].
+
+        score_thresholds: list[int]
+            List of score thresholds to be used in the algorithm. Defaults to [5, 6, 7, 8, 9, 10, 11, 12].
+        
+        N: int
+            Number of iterations on which to compute the accuracy. At each iteration, a new random sample is taken from negative and positive. Defaults to 100.
+    """
+
+    X = len(nb_positive_objects_to_be_found)
+    Y = len(score_thresholds)
+
+    plt.subplots(Y, X, figsize=(X*3, Y*3.5), sharex=True, sharey=True)
+    plt.suptitle(title)
+    subplot_index = 1
+    for score_threshold in score_thresholds:
+        for n in nb_positive_objects_to_be_found:
+            print(f'{subplot_index}/{X*Y}')
+            plt.subplot(Y, X, subplot_index)
+            subplot_index += 1
+            accuracy_versus_n_neighbors(positive=positive,
+                                        negative=negative,
+                                        positive_sample_size=n,
+                                        score_threshold=score_threshold,
+                                        N=100,
+                                        kept_columns=['objectId', 'class'])
+            print('')
+            clear_output()
+    plt.tight_layout()
+    
     return
