@@ -11,7 +11,7 @@ def tqdm2(iterable, **kwargs):
     ---
         iterable:
             The iterable to be wrapped with a progress bar.
-        **kwargs:
+        kwargs:
             Additional keyword arguments to be passed to tqdm.
     """
     default_kwargs = {'bar_format': '{l_bar}{bar}| {n_fmt}/{total_fmt}'}

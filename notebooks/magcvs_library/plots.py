@@ -2,9 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from sklearn.model_selection import train_test_split
 from itertools import combinations
-from magcvs_library.utils import tqdm2
-from magcvs_library.science import find_candidates
+from .utils import tqdm2
+from .science import find_candidates
 
 
 # Light function for heavy corner plots:
@@ -148,74 +149,94 @@ def modified_corner_plot(dfx: pd.DataFrame, dfy: pd.DataFrame, df2x: pd.DataFram
     return
 
 
-def accuracy_versus_n_neighbors(positive_train, positive_test, negative, negative_sample_size=2_000, N=100, candidate_threshold=1, max_candidates=None, n_neighbors_list=np.arange(1, 11)):
+def accuracy_versus_n_neighbors(positive: pd.DataFrame,
+                                negative: pd.DataFrame,
+                                positive_sample_size: int = 5,
+                                negative_sample_size: int = 2_000,
+                                N: int = 100,
+                                n_neighbors_list: list[int] = [1, 2, 3],
+                                **kwargs) -> None:
     """
     Function to evaluate and plot the mean accuracy (proportion of candidates that are of the positive class) as a function of the number of neighbors and given other parameters.
 
     Parameters
     ---
-        positive_train: pd.DataFrame
-            Feature data of positive objects to be found by the algorithm among the negative ones in the feature space.
-            
-        positive_test: pd.DataFrame
-            Feature data of positive objects to find neighbors for (input to the algorithm).
-            
+        positive: pd.DataFrame
+            Feature data of positive objects.
+
         negative: pd.DataFrame
             Feature data of negative objects in the feature space.
 
+        positive_sample_size: int, optional
+            Number of positive objects to be found that will be sampled from positive and put in the feature space with the negatives. The remaining positive objects will be used as inputs to the algorithm. Defaults to 5.
+
         negative_sample_size: _type_, optional
             Number of objects to be sampled from negative. Defaults to 2_000.
-            
+
         N: int, optional
             Number of iterations on which to compute the mean. At each iteration, a new random sample is taken from negative. Defaults to 100.
-            
-        candidate_threshold: int, optional
-            See find_candidates' documentation. Defaults to 1.
-            
-        max_candidates: int, optional
-            See find_candidates' documentation. Defaults to 10.
-            
+
         n_neighbors_list: list, optional
-            List of number of nearest neighbors to be explored. Defaults to np.arange(1, 11).
+            List of number of nearest neighbors to be explored. Defaults to [1, 2, 3].
+
+        kwargs:
+            Additional keyword arguments to be passed to the find_candidates function. (score_threshold, max_candidates, feature_names, kept_columns)
     """
 
     # Store accuracies for boxplot:
     all_accuracies = []
-    for n_neighbors in tqdm2(n_neighbors_list): # add tqdm2 here for progress bar
+    for n_neighbors in tqdm2(n_neighbors_list):
         current_accuracies = []
         for _ in range(N):
+            positive_to_be_found, positive_algo_input = train_test_split(positive, train_size=positive_sample_size)
             negative_sample = negative.sample(n=negative_sample_size)
-            feature_space = pd.concat([positive_train, negative_sample]).reset_index(drop=True)
+            feature_space = pd.concat([positive_to_be_found, negative_sample]).reset_index(drop=True)
             candidates = find_candidates(
-                positive=positive_test,
+                positive=positive_algo_input,
                 feature_space=feature_space,
                 n_neighbors=n_neighbors,
-                candidate_threshold=candidate_threshold,
-                max_candidates=max_candidates
+                **kwargs
             )
             if len(candidates) != 0:
                 current_accuracies.append(len(candidates[candidates['class'] == 'positive']) / len(candidates) * 100)
             else:
-                current_accuracies.append(100)
+                continue
         all_accuracies.append(current_accuracies)
 
-    # Flatten data for seaborn
+    # Flatten data and convert to categorical for seaborn boxplot:
     df_plot = pd.DataFrame({
         'accuracy': np.concatenate(all_accuracies),
-        'n_neighbors': np.repeat(n_neighbors_list, repeats=len(all_accuracies[0]))
+        'n_neighbors': np.concatenate([np.repeat(n, repeats=len(acc)) for n, acc in zip(n_neighbors_list, all_accuracies)])
     })
+    df_plot['n_neighbors'] = pd.Categorical(
+        df_plot['n_neighbors'],
+        categories=n_neighbors_list,
+        ordered=True
+    )
 
-    plt.title(f'Candidate threshold = {candidate_threshold}\nMax candidates = {max_candidates}')
-    sns.boxplot(x='n_neighbors', y='accuracy', data=df_plot, width=0.4, showfliers=True, fill=False, medianprops={"color": "r", "linewidth": 2}, whis=(5, 95))
-    
-    #sns.stripplot(df_plot, x="n_neighbors", y="accuracy", size=2, color=".3")
-    #sns.violinplot(data=df_plot, x="n_neighbors", y="accuracy", fill=False, inner='point')
-    
-    plt.axhline(y=50, color='r', linestyle='--', alpha=.5, label='50% accuracy')
-    plt.legend(loc='upper right')
-    #plt.ylim(0, 100)
+    if 'score_threshold' in kwargs:
+        score_threshold = kwargs['score_threshold']
+    else:
+        score_threshold = find_candidates.__kwdefaults__['score_threshold']
+    plt.title(f'{positive_sample_size} CVs to be found\nScore threshold = {score_threshold}')
+    sns.boxplot(x='n_neighbors', y='accuracy', data=df_plot, width=0.4, showfliers=False, fill=False, medianprops={"color": "r", "linewidth": 2}, whis=(5, 95))
+
+    # Add count annotations on top of each box:
+    for idx, acc_list in enumerate(all_accuracies):
+        count = len(acc_list)
+        plt.text(
+            x=idx,
+            y=102,
+            s=f'N={count}',
+            ha='center',
+            va='bottom',
+            fontsize=9,
+            color='gray'
+        )
+
+    plt.ylim(0, 110)
     plt.xlabel('Number of neighbors')
-    plt.ylabel('Accuracy distribution(%)')
+    plt.ylabel('Accuracy distribution (%)')
     plt.grid(axis='y')
 
     return
