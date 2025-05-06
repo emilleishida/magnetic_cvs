@@ -3,6 +3,7 @@ import numpy as np
 import io
 import requests
 from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import StandardScaler
 import light_curve as lc
 from .utils import tqdm2
 
@@ -257,6 +258,44 @@ def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False,
         return output_df
 
 
+def std_scale(*df: pd.DataFrame, columns: list[str]) -> list[pd.DataFrame]:
+    """
+    Function to standardize multiple DataFrames together using StandardScaler from sklearn. Removes the mean and scales to unit variance on the given columns.
+
+    Parameters
+    ---
+        df: pd.DataFrame
+            DataFrames to be scaled together. They should all have columns in common.
+        
+        columns: list[str]
+            List of columns to be scaled.
+
+    Returns
+    ---
+        list[pd.DataFrame]
+            List of DataFrames with the same order as input, but scaled.
+    """
+
+    dataframes = [*df]
+    all_df = pd.concat(dataframes, ignore_index=True) # Grouping positive & negative together so that they are then normalized the same way.
+
+    scaler = StandardScaler()
+    scaled_features = scaler.fit_transform(all_df[columns])
+    scaled_df = pd.DataFrame(scaled_features, columns=columns)
+
+    # Preserve other columns (like objectId, class, etc.)
+    for col in all_df.columns:
+        if col not in columns:
+            scaled_df[col] = all_df[col].values
+
+    # Split back
+    output = []
+    for df in dataframes:
+        output.append(scaled_df.iloc[:len(df)].copy())
+        scaled_df = scaled_df.iloc[len(df):].copy()
+    return output
+
+
 def find_candidates(positive: pd.DataFrame,
                     feature_space: pd.DataFrame,
                     *,
@@ -357,6 +396,8 @@ def find_candidates(positive: pd.DataFrame,
         'periodogram_percent_amplitude'
         ]
 
+    # Standardizing the features:
+    feature_space, positive = std_scale(feature_space, positive, columns=feature_names)
     # Finding the nearest neighbors of positive objects:
     neigh = NearestNeighbors(n_neighbors=n_neighbors).fit(feature_space[feature_names])
     neighbors_indices = neigh.kneighbors(positive[feature_names], return_distance=False)
