@@ -147,7 +147,7 @@ def get_lightcurve_data(Ids: list[str] | str,
             data_g = add_new_line(data_g, pdf_g, object)
             data_r = add_new_line(data_r, pdf_r, object)
 
-    return data_g[data_g['nb_of_points'] >= cut], data_r[data_r['nb_of_points'] >= cut]
+    return data_g[data_g['nb_of_points'] >= cut].reset_index(drop=True), data_r[data_r['nb_of_points'] >= cut].reset_index(drop=True)
 
 
 def sort_negative(negative_lc: pd.DataFrame,
@@ -489,3 +489,100 @@ def find_candidates(positive: pd.DataFrame,
     else:
         candidates = candidates.iloc[:max_candidates] # Returning only the first 'max_candidates' candidates.
         return candidates[candidates['score'] >= score_threshold]
+
+
+# Added option to find the first two nearest neighbors of ZTF18aaadlpa
+
+
+def find_ZTF18aaadlpa_neighbors(positive: pd.DataFrame,
+                    feature_space: pd.DataFrame,
+                    *,
+                    n_neighbors: int = 2,
+                    feature_names: list[str] | None = None,
+                    ) -> pd.DataFrame:
+    """
+    Function to find the first n_neighbors nearest neighbors of ZTF18aaadlpa in the feature space.
+
+    Parameters
+    ---
+        positive: pd.DataFrame
+            DataFrame containing the features of positive class objects.
+
+        feature_space: pd.DataFrame
+            DataFrame containing the features of all objects to evaluate.
+
+        n_neighbors: int, optional
+            Number of neighbors for the nearest neighbors algorithm. Defaults to 2.
+
+        feature_names: list[str] | None, optional
+            List of feature names to use for the nearest neighbors algorithm. If None, default feature names are used. Defaults to None.
+
+    Returns
+    ---
+        ZTF18aaadlpa_neighbors: pd.DataFrame
+    """
+
+    if feature_names is None: # If no feature names are provided, use the default ones:
+        feature_names = [
+        'amplitude',
+        'anderson_darling_normal',
+        'beyond_1_std',
+        'beyond_2_std',
+        'cusum',
+        'eta',
+        'eta_e',
+        'excess_variance',
+        'inter_percentile_range_25',
+        'inter_percentile_range_10',
+        'kurtosis',
+        'linear_fit_slope',
+        'linear_fit_slope_sigma',
+        'linear_fit_reduced_chi2',
+        'linear_trend',
+        'linear_trend_sigma',
+        'linear_trend_noise',
+        'magnitude_percentage_ratio_40_5',
+        'magnitude_percentage_ratio_20_10',
+        'maximum_slope',
+        'mean',
+        'mean_variance',
+        'median',
+        'median_absolute_deviation',
+        'median_buffer_range_percentage_10',
+        'otsu_mean_diff',
+        'otsu_std_lower',
+        'otsu_std_upper',
+        'otsu_lower_to_all_ratio',
+        'percent_amplitude',
+        'percent_difference_magnitude_percentile_5',
+        'percent_difference_magnitude_percentile_20',
+        'chi2',
+        'roms',
+        'skew',
+        'standard_deviation',
+        'stetson_K',
+        'weighted_mean',
+        'period_0',
+        'period_s_to_n_0',
+        'period_1',
+        'period_s_to_n_1',
+        'period_2',
+        'period_s_to_n_2',
+        'periodogram_amplitude',
+        'periodogram_beyond_1_std',
+        'periodogram_beyond_2_std',
+        'periodogram_cusum',
+        'periodogram_eta',
+        'periodogram_inter_percentile_range_25',
+        'periodogram_standard_deviation',
+        'periodogram_percent_amplitude'
+        ]
+
+    # Standardizing the features:
+    feature_space, positive = std_scale(feature_space, positive, columns=feature_names)
+    # Finding the nearest neighbors of positive objects:
+    neigh = NearestNeighbors(n_neighbors=n_neighbors).fit(feature_space[feature_names])
+    ZTF18aaadlpa_neighbors_indices = neigh.kneighbors(positive[positive['objectId'] == 'ZTF18aaadlpa'][feature_names], n_neighbors=2, return_distance=False)
+    ZTF18aaadlpa_neighbors = feature_space.iloc[ZTF18aaadlpa_neighbors_indices.flatten()]
+
+    return ZTF18aaadlpa_neighbors
