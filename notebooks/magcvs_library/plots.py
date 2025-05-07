@@ -10,7 +10,12 @@ from .science import find_candidates
 
 
 # Light function for heavy corner plots:
-def corner_plot(df: pd.DataFrame, df2: pd.DataFrame = None, data_labels: list[str] | None = None, normalize_hist: bool = True, alpha: float = .1) -> None:
+def corner_plot(df: pd.DataFrame,
+                df2: pd.DataFrame = None,
+                data_labels: list[str] | None = None,
+                normalize_hist: bool = True,
+                alpha: float = .1
+                ) -> None:
     """
     Make a corner plot which dimension is the number of columns of the DataFrame.  
     This function aims to be faster than other high level cornerplot functions such as seaborn's pairplot or corner.py in order to have higher dimensionnal plots quicker.
@@ -82,7 +87,12 @@ def corner_plot(df: pd.DataFrame, df2: pd.DataFrame = None, data_labels: list[st
     return
 
 
-def modified_corner_plot(dfx: pd.DataFrame, dfy: pd.DataFrame, df2x: pd.DataFrame, df2y: pd.DataFrame, data_labels: list[str] | None = None) -> None:
+def modified_corner_plot(dfx: pd.DataFrame,
+                         dfy: pd.DataFrame,
+                         df2x: pd.DataFrame,
+                         df2y: pd.DataFrame,
+                         data_labels: list[str] | None = None
+                         ) -> None:
     """
     Modified version of the corner_plot function to plot the data from two different filters. Data from filter x is plotted on the x axis and data from filter y is plotted on the y axis.  
     dfx, dfy, df2x and df2y should have the same columns.
@@ -156,7 +166,8 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
                                 negative_sample_size: int = 2_000,
                                 N: int = 100,
                                 n_neighbors_list: list[int] = [1, 2, 3],
-                                **kwargs) -> None:
+                                **kwargs
+                                ) -> None:
     """
     Function to evaluate and plot the distribution of the accuracy (proportion of candidates that are of the positive class) as a function of the number of neighbors and given other parameters.
 
@@ -189,7 +200,8 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
     for n_neighbors in tqdm2(n_neighbors_list):
         current_accuracies = []
         for _ in range(N):
-            positive_to_be_found, positive_algo_input = train_test_split(positive, train_size=positive_sample_size)
+            Ids_to_be_found = np.random.choice(np.unique(positive['objectId']), size=positive_sample_size, replace=False)
+            positive_to_be_found, positive_algo_input = positive[positive['objectId'].isin(Ids_to_be_found)].drop_duplicates(subset='objectId'), positive[~positive['objectId'].isin(Ids_to_be_found)]
             negative_sample = negative.sample(n=negative_sample_size)
             feature_space = pd.concat([positive_to_be_found, negative_sample]).reset_index(drop=True)
             candidates = find_candidates(
@@ -245,10 +257,10 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
 
 def explore_params(positive: pd.DataFrame,
                    negative: pd.DataFrame,
-                   title: str,
                    nb_positive_objects_to_be_found: list[int] = [1, 2, 5],
                    score_thresholds: list[int] = [5, 6, 7, 8, 9, 10, 11, 12],
-                   N: int = 100) -> None:
+                   N: int = 100
+                   ) -> None:
     """
     Wrapper function of the accuracy_versus_n_neighbors function to explore the parameters of the algorithm.
 
@@ -259,9 +271,6 @@ def explore_params(positive: pd.DataFrame,
 
         negative: pd.DataFrame
             Feature data of negative objects.
-
-        title: str
-            Title of the plot.
 
         nb_positive_objects_to_be_found: list[int]
             List of number of objects to sample from positive and to be found by the algorithm. Defaults to [1, 2, 5].
@@ -277,7 +286,6 @@ def explore_params(positive: pd.DataFrame,
     Y = len(score_thresholds)
 
     plt.subplots(Y, X, figsize=(X*3, Y*3.5), sharex=True, sharey=True)
-    plt.suptitle(title)
     subplot_index = 1
     for score_threshold in score_thresholds:
         for n in nb_positive_objects_to_be_found:
@@ -288,7 +296,7 @@ def explore_params(positive: pd.DataFrame,
                                         negative=negative,
                                         positive_sample_size=n,
                                         score_threshold=score_threshold,
-                                        N=100,
+                                        N=N,
                                         kept_columns=['objectId', 'class'])
             print('')
             clear_output()
