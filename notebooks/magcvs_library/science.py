@@ -8,8 +8,54 @@ import light_curve as lc
 from .utils import tqdm2
 
 
+def split_by_time_range(df: pd.DataFrame,
+                        min_time: int = 11.5,
+                        max_time: int = 12.5
+                        ) -> list[pd.DataFrame]:
+    """
+    Splits a DataFrame into multiple DataFrames based on time ranges. If the time range of df is smaller than min_time, returns an empty list.
+
+    Parameters
+    ---
+        df: pd.DataFrame
+            The DataFrame to be split. Should contain column 'i:jd'.
+
+        min_time: int
+            The minimum time range in months. Default is 11.5.
+
+        max_time: int
+            The maximum time range in months. Default is 12.5.
+
+    Returns
+    ---
+        dataframes: list[pd.DataFrame]
+            A list of DataFrames, each containing a time range between min_time and max_time months.
+    """
+    
+    time_values = df['i:jd'].values
+    time_range = max(time_values) - min(time_values)
+    
+    dataframes = []
+    
+    while time_range > min_time * 30.44: # * 30.44 for conversion from months to days.
+        new_df = df[(df['i:jd'] >= min(time_values)) & (df['i:jd'] <= min(time_values) + max_time * 30.44)]
+        if max(new_df['i:jd']) - min(new_df['i:jd']) >= min_time * 30.44:
+            dataframes.append(new_df)
+        time_values = time_values[time_values > max(new_df['i:jd'])] # Update the time values to only include the remaining values.
+        try:
+            time_range = max(time_values) - min(time_values) # Computing the remaining time range.
+        except:
+            time_range = 0 # If there are not enough values to compute the time range, it is set to 0.
+
+    return dataframes
+
+
 # Wrapper for fink api (to be modified for more options... - look in fink api doc the columns available for json argument):
-def get_lightcurve_data(Ids: list[str] | str, cut: int = 4, split_by_filter: bool = True) -> tuple[pd.DataFrame, pd.DataFrame] | pd.DataFrame:
+def get_lightcurve_data(Ids: list[str] | str,
+                        cut: int = 4,
+                        split_by_filter: bool = True,
+                        time_range_split: bool = True
+                        ) -> tuple[pd.DataFrame, pd.DataFrame] | pd.DataFrame:
     """
     Retreive light curve data using Fink API for a given set of object Ids.
 
@@ -28,10 +74,13 @@ def get_lightcurve_data(Ids: list[str] | str, cut: int = 4, split_by_filter: boo
             A list containing the object Ids for which to extract light curve data. Can be passed as a string for a single object Id.
 
         cut: int, optional
-            A threshold on the number of points in the light curves. Light curves with less than 'cut' points will not be returned. Defaults to 4.
+            A threshold on the number of points in the light curves. Light curves with less than 'cut' points will not be returned. The feature extractor from light_curve package does not accept less than 4 data points. Defaults to 4.
 
         split_by_filter: bool, optional
             If True, the light curve data will be split into two separate dataframes for g and r filters. If False, the data will be returned in one dataframe with a filter column. Defaults to True.
+
+        time_range_split: bool, optional
+            If True, the light curve data for each object will be split into ~1 year time ranges. So one object may be associated with multiple lines in the output. This option is not implemented if split_by_filter is False. Defaults to True.
 
     Returns
     ---
@@ -52,41 +101,58 @@ def get_lightcurve_data(Ids: list[str] | str, cut: int = 4, split_by_filter: boo
                                       )
                            )
         return data
-
     # else:
+
     # Initializing the two dataframes which will contain the light curve data in g and r filter:
     data_g = pd.DataFrame(columns=['objectId', 'time_range (yr)', 'nb_of_points', 'i:jd', 'i:magpsf', 'i:sigmapsf'])
     data_r = pd.DataFrame(columns=['objectId', 'time_range (yr)', 'nb_of_points', 'i:jd', 'i:magpsf', 'i:sigmapsf'])
 
+    def add_new_line(df1: pd.DataFrame, df2: pd.DataFrame, obj: str) -> pd.DataFrame:
+        """
+        Adds a new line to the dataframe df1 with the data from df2. The new line will contain the objectId, time range, number of points, and the light curve data (i:jd, i:magpsf, i:sigmapsf) from df2.
+
+        Parameters
+        ---
+            df1: pd.DataFrame
+                data_g or data_r.
+
+            df2: pd.DataFrame
+                Object data from fink api to be added as one line in df1.
+        """
+
+        jd_g = df2['i:jd'].values
+        magpsf_g = df2['i:magpsf'].values
+        sigmapsf_g = df2['i:sigmapsf'].values
+        new_row = pd.DataFrame([dict(zip(df1.columns, [obj, round((max(jd_g)-min(jd_g))/365, 3), len(jd_g), jd_g, magpsf_g, sigmapsf_g]))])
+
+        return pd.concat([df1, new_row], ignore_index=True)
+
     for object in tqdm2(Ids):
         # Getting the data from the current object with fink api:
         pdf = pd.read_json(io.BytesIO(requests.post("https://api.fink-portal.org/api/v1/objects",
-                                                    json={"objectId": object, "columns": "i:objectId,i:jd,i:magpsf,i:sigmapsf,i:fid", "output-format": "json"}
+                                                    json={"objectId": object, "columns": "i:jd,i:magpsf,i:sigmapsf,i:fid", "output-format": "json"}
                                                     ).content
                                       )
                            ).sort_values(by='i:jd') # Sorting by ascending julian date for the extractor. (Default output is descending)
-        # g filter:
+
         pdf_g = pdf[pdf['i:fid'] == 1]
-        if len(pdf_g) >= cut: # Extractor does not accept less than 4 data points.
-            jd_g = pdf_g['i:jd'].values
-            magpsf_g = pdf_g['i:magpsf'].values
-            sigmapsf_g = pdf_g['i:sigmapsf'].values
-            new_row = pd.DataFrame([dict(zip(data_g.columns, [object, round((max(jd_g)-min(jd_g))/365, 3), len(jd_g), jd_g, magpsf_g, sigmapsf_g]))])
-            data_g = pd.concat([data_g, new_row], ignore_index=True)
-
-        # r filter:
         pdf_r = pdf[pdf['i:fid'] == 2]
-        if len(pdf_r) >= cut:
-            jd_r = pdf_r['i:jd'].values
-            magpsf_r = pdf_r['i:magpsf'].values
-            sigmapsf_r = pdf_r['i:sigmapsf'].values
-            new_row = pd.DataFrame([dict(zip(data_r.columns, [object, round((max(jd_r)-min(jd_r))/365, 3), len(jd_r), jd_r, magpsf_r, sigmapsf_r]))])
-            data_r = pd.concat([data_r, new_row], ignore_index=True)
 
-    return data_g, data_r
+        if time_range_split:
+            for df_g in split_by_time_range(pdf_g):
+                data_g = add_new_line(data_g, df_g, object)
+            for df_r in split_by_time_range(pdf_r):
+                data_r = add_new_line(data_r, df_r, object)
+        else:
+            data_g = add_new_line(data_g, pdf_g, object)
+            data_r = add_new_line(data_r, pdf_r, object)
+
+    return data_g[data_g['nb_of_points'] >= cut], data_r[data_r['nb_of_points'] >= cut]
 
 
-def sort_negative(negative_lc: pd.DataFrame, positive_Ids: list[str]):
+def sort_negative(negative_lc: pd.DataFrame,
+                  positive_Ids: list[str]
+                  ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Given a DataFrame containing the light curve data, removes potential objects that have positive_Ids and returns the data splitted by filter ready for feature extraction. 
 
@@ -154,7 +220,10 @@ def sort_negative(negative_lc: pd.DataFrame, positive_Ids: list[str]):
     return negative_lc_g, negative_lc_r
 
 
-def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False, **kwargs) -> pd.DataFrame:
+def extract_features(light_curve_data: pd.DataFrame,
+                     return_names: bool = False,
+                     **kwargs
+                     ) -> pd.DataFrame:
     """
     Extracts statistical features from light curve data using the light_curve library.
 
@@ -258,7 +327,9 @@ def extract_features(light_curve_data: pd.DataFrame, return_names: bool = False,
         return output_df
 
 
-def std_scale(*df: pd.DataFrame, columns: list[str]) -> list[pd.DataFrame]:
+def std_scale(*df: pd.DataFrame,
+              columns: list[str]
+              ) -> list[pd.DataFrame]:
     """
     Function to standardize multiple DataFrames together using StandardScaler from sklearn. Removes the mean and scales to unit variance on the given columns.
 
