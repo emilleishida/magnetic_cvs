@@ -491,9 +491,6 @@ def find_candidates(positive: pd.DataFrame,
         return candidates[candidates['score'] >= score_threshold]
 
 
-# Added option to find the first two nearest neighbors of ZTF18aaadlpa
-
-
 def find_ZTF18aaadlpa_neighbors(positive: pd.DataFrame,
                     feature_space: pd.DataFrame,
                     *,
