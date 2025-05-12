@@ -2,8 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from sklearn.model_selection import train_test_split
 from itertools import combinations
+import requests
+import io
+from astropy.timeseries import LombScargleMultiband
 from IPython.display import clear_output
 from .utils import tqdm2
 from .science import find_candidates
@@ -258,7 +260,7 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
 def explore_params(positive: pd.DataFrame,
                    negative: pd.DataFrame,
                    nb_positive_objects_to_be_found: list[int] = [1, 2, 5],
-                   score_thresholds: list[int] = [5, 6, 7, 8, 9, 10, 11, 12],
+                   score_thresholds: list[int] = [5, 6, 7, 8, 9, 10],
                    N: int = 100
                    ) -> None:
     """
@@ -302,4 +304,58 @@ def explore_params(positive: pd.DataFrame,
             clear_output()
     plt.tight_layout()
     
+    return
+
+
+def plot_periodogram(objectId: str) -> None:
+    """
+    Plot the lightcurve and its associated Lomb-Scargle periodogram of an object given its Id.
+
+    Parameters
+    ---
+        objectId: str
+            The Id of the object to plot.
+    """
+
+    # Get the light curve data of the specified object:
+    obj = pd.read_json(io.BytesIO(requests.post("https://api.fink-portal.org/api/v1/objects",
+                                                json={"objectId": objectId,
+                                                      "columns": "i:objectId,i:jd,i:magpsf,i:sigmapsf,i:fid",
+                                                      "output-format": "json"
+                                                      }
+                                                ).content
+                                  )
+                       ).sort_values(by='i:jd')
+
+    # Extract time, magnitude, magnitude error and filter:
+    t = obj['i:jd'].values
+    m = obj['i:magpsf'].values
+    m_err = obj['i:sigmapsf'].values
+    fid = obj['i:fid'].values
+
+    # Compute the Lomb-Scargle periodogram:
+    frequency, power = LombScargleMultiband(t, m, fid, m_err).autopower(nyquist_factor=1)
+
+    plt.figure(figsize=(12, 4))
+    plt.suptitle(objectId)
+
+    # Plot the periodogram:
+    plt.subplot(1, 2, 1)
+    plt.plot(frequency, power)
+    plt.title('Lomb-Scargle Periodogram')
+    plt.xlabel('Frequency (day$^{-1}$)')
+    plt.ylabel('Lomb-Scargle Power')
+
+    # Plot the lightcurve:
+    plt.subplot(1, 2, 2)
+    plt.errorbar(t[fid == 1], m[fid == 1], yerr=m_err[fid == 1], fmt='o', c='g', label='g-band')
+    plt.errorbar(t[fid == 2], m[fid == 2], yerr=m_err[fid == 2], fmt='o', c='r', label='r-band')
+    plt.legend(loc='upper right')
+    plt.title('Light Curve')
+    plt.xlabel('JD')
+    plt.ylabel('Magnitude')
+    plt.gca().invert_yaxis()
+
+    plt.tight_layout()
+
     return
