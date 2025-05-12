@@ -123,7 +123,11 @@ def get_lightcurve_data(Ids: list[str] | str,
         jd_g = df2['i:jd'].values
         magpsf_g = df2['i:magpsf'].values
         sigmapsf_g = df2['i:sigmapsf'].values
-        new_row = pd.DataFrame([dict(zip(df1.columns, [obj, round((max(jd_g)-min(jd_g))/365, 3), len(jd_g), jd_g, magpsf_g, sigmapsf_g]))])
+        try:
+            time_range = round((max(jd_g)-min(jd_g))/365, 3)
+        except:
+            time_range = 0
+        new_row = pd.DataFrame([dict(zip(df1.columns, [obj, time_range, len(jd_g), jd_g, magpsf_g, sigmapsf_g]))])
 
         return pd.concat([df1, new_row], ignore_index=True)
 
@@ -496,6 +500,7 @@ def find_ZTF18aaadlpa_neighbors(positive: pd.DataFrame,
                     *,
                     n_neighbors: int = 2,
                     feature_names: list[str] | None = None,
+                    kept_columns: list[str] = ['objectId']
                     ) -> pd.DataFrame:
     """
     Function to find the first n_neighbors nearest neighbors of ZTF18aaadlpa in the feature space.
@@ -513,6 +518,9 @@ def find_ZTF18aaadlpa_neighbors(positive: pd.DataFrame,
 
         feature_names: list[str] | None, optional
             List of feature names to use for the nearest neighbors algorithm. If None, default feature names are used. Defaults to None.
+
+        kept_columns: list[str], optional
+            List of columns to keep in the output DataFrame. Note that if different from default, it should still include 'objectId'. Defaults to ['objectId'].
 
     Returns
     ---
@@ -582,4 +590,91 @@ def find_ZTF18aaadlpa_neighbors(positive: pd.DataFrame,
     ZTF18aaadlpa_neighbors_indices = neigh.kneighbors(positive[positive['objectId'] == 'ZTF18aaadlpa'][feature_names], n_neighbors=2, return_distance=False)
     ZTF18aaadlpa_neighbors = feature_space.iloc[ZTF18aaadlpa_neighbors_indices.flatten()]
 
-    return ZTF18aaadlpa_neighbors
+    return ZTF18aaadlpa_neighbors[kept_columns]
+
+
+def find_candidates_from_parquet(path_to_parquet: str,
+                                 only_polars: bool = False,
+                                 **kwargs
+                                 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Function to find candidates from a parquet file containing light curves.
+    Also finds the ZTF18aaadlpa neighbors and adds them to the candidates.
+
+    The format of the data is the one from Fink api and should be as follows:
+    'objectId': str                   The identifier of the object,
+    'i:jd': Iterable[float]           The Julian date for every point in the light curve,
+    'i:magpsf': Iterable[float]       The magnitude of the object for every point in its light curve,
+    'i:sigmapsf': Iterable[float]     The error of the magnitude for every point in its light curve,
+    'i:fid': Iterable[int]            For every point in the light curve, wether it is from the g or r band (1 -> g-band, 2 -> r-band).
+
+    Parameters
+    ---
+        path_to_parquet: str
+            Path to the parquet file containing the light curves of objects from one night of observation.
+
+        only_polars: bool, optional
+            If True, only polars will be used as inputs to the algorithm, else all known magnetic CVs will be used. Default is False.
+
+        kwargs:
+            Additional keyword arguments to be passed to the find_candidates function. (score_threshold, max_candidates, feature_names, kept_columns)
+
+    Returns
+    ---
+        candidates_g: pd.DataFrame
+            Candidates in g band.
+        
+        candidates_r: pd.DataFrame
+            Candidates in r band.
+    """
+
+    # Ids and statistical features already computed from light curves in g and r bands of known magnetic cataclysmic variable stars (positive objects):
+    all_positive_Ids = pd.read_csv('../data/magcvs_objids_all_years_p3_clean.csv')['objectId'].values.flatten()
+    for i, id in enumerate(all_positive_Ids):
+        if len(id) > 12:
+            all_positive_Ids[i] = id.replace('[', '').replace(']', '').replace("'", '')[0:12]
+    all_positive_Ids = np.unique(all_positive_Ids)
+
+    if only_polars:
+        positive_g = pd.read_parquet('../../data/polars/features_g.parquet')
+        positive_r = pd.read_parquet('../../data/polars/features_r.parquet')
+    else:
+        positive_g = pd.read_parquet('../../data/magcvs/features_g.parquet')
+        positive_r = pd.read_parquet('../../data/magcvs/features_r.parquet')
+
+    # Light curves of all objects scanned in some night:
+    other_lc = pd.read_parquet(path_to_parquet)
+
+    # Splitting the data from the night by filter and removing potential already known positive objects:
+    other_lc_g, other_lc_r = sort_negative(other_lc, all_positive_Ids)
+
+    other_lc_g.to_parquet('../../data/20250410/light_curves_g.parquet')
+    other_lc_r.to_parquet('../../data/20250410/light_curves_r.parquet')
+
+    # Extracting the features from the light curves:
+    other_features_g = extract_features(other_lc_g)
+    other_features_r = extract_features(other_lc_r)
+
+    candidates_g = find_candidates(positive_g, other_features_g, **kwargs)
+    candidates_r = find_candidates(positive_r, other_features_r, **kwargs)
+
+    # Adding the ZTF18aaadlpa neighbors to the candidates:
+    if 'feature_names' in kwargs:
+        feature_names = kwargs['feature_names']
+    else:
+        feature_names = find_ZTF18aaadlpa_neighbors.__kwdefaults__['feature_names']
+    if 'kept_columns' in kwargs:
+        kept_columns = kwargs['kept_columns']
+    else:
+        kept_columns = find_ZTF18aaadlpa_neighbors.__kwdefaults__['kept_columns']
+    ZTF18aaadlpa_neighbors_g = find_ZTF18aaadlpa_neighbors(positive_g, other_features_g, feature_names=feature_names, kept_columns=kept_columns)
+    ZTF18aaadlpa_neighbors_r = find_ZTF18aaadlpa_neighbors(positive_r, other_features_r, feature_names=feature_names, kept_columns=kept_columns)
+    candidates_g = pd.concat([candidates_g, ZTF18aaadlpa_neighbors_g], ignore_index=True)
+    candidates_r = pd.concat([candidates_r, ZTF18aaadlpa_neighbors_r], ignore_index=True)
+    # Tag the ZTF18aaadlpa neighbors:
+    candidates_g['ZTF18aaadlpa_neighbors'] = 0
+    candidates_r['ZTF18aaadlpa_neighbors'] = 0
+    candidates_g.loc[candidates_g['objectId'].isin(ZTF18aaadlpa_neighbors_g['objectId']), 'ZTF18aaadlpa_neighbors'] = 1
+    candidates_r.loc[candidates_r['objectId'].isin(ZTF18aaadlpa_neighbors_r['objectId']), 'ZTF18aaadlpa_neighbors'] = 1
+
+    return candidates_g, candidates_r
