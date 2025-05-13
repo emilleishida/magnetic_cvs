@@ -8,7 +8,7 @@ import io
 from astropy.timeseries import LombScargleMultiband
 from IPython.display import clear_output
 from .utils import tqdm2
-from .science import find_candidates
+from .science import std_scale, find_candidates
 
 
 # Light function for heavy corner plots:
@@ -158,6 +158,50 @@ def modified_corner_plot(dfx: pd.DataFrame,
     if data_labels is not None:
         fig.legend(data_labels, loc='center right')
     fig.tight_layout()
+
+    return
+
+
+def plot_distributions(*dfs: pd.DataFrame,
+                       labels: list[str],
+                       columns: list
+                       ) -> None:
+    """
+    For each given column in columns, plots the KDE distributions of corresponding values in each DataFrame in dfs.
+
+    Parameters
+    ---
+        dfs: pd.DataFrame
+            DataFrames for which to plot the distributions.
+
+        labels: list[str]
+            Labels for each DataFrame in dfs.
+
+        columns: list
+            Columns on which to show the distributions.
+    """
+
+    # Standardize the dataframes together:
+    scaled_dataframes = std_scale(*dfs, columns=columns)
+
+    # Adjust the number of plots per row:
+    n_cols = 4
+    n_rows = int(np.ceil(len(columns) / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+    axes = axes.flatten()
+
+    # Plot the distributions:
+    for i, c in enumerate(columns):
+        ax = axes[i]
+        for j, df in enumerate(scaled_dataframes):
+            sns.kdeplot(df[c], label=labels[j], fill=True, ax=ax)
+        ax.legend()
+
+    # Hide unused subplots:
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
 
     return
 
