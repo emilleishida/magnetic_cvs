@@ -331,7 +331,7 @@ def extract_features(light_curve_data: pd.DataFrame,
         return output_df
 
 
-def std_scale(*df: pd.DataFrame,
+def std_scale(*dfs: pd.DataFrame,
               columns: list[str]
               ) -> list[pd.DataFrame]:
     """
@@ -339,7 +339,7 @@ def std_scale(*df: pd.DataFrame,
 
     Parameters
     ---
-        df: pd.DataFrame
+        dfs: pd.DataFrame
             DataFrames to be scaled together. They should all have columns in common.
         
         columns: list[str]
@@ -347,27 +347,31 @@ def std_scale(*df: pd.DataFrame,
 
     Returns
     ---
-        list[pd.DataFrame]
+        output: list[pd.DataFrame]
             List of DataFrames with the same order as input, but scaled.
     """
 
-    dataframes = [*df]
-    all_df = pd.concat(dataframes, ignore_index=True) # Grouping positive & negative together so that they are then normalized the same way.
+    # Grouping the DataFrames together so that they are standardized the same way.
+    dataframes = []
+    for df in dfs:
+        dataframes.append(df.copy())
+    all_df = pd.concat(dataframes, ignore_index=True)
 
+    # Standardizing:
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(all_df[columns])
     scaled_df = pd.DataFrame(scaled_features, columns=columns)
 
-    # Preserve other columns (like objectId, class, etc.)
+    # Preserving other columns:
     for col in all_df.columns:
         if col not in columns:
             scaled_df[col] = all_df[col].values
 
-    # Split back
+    # Spliting back:
     output = []
     for df in dataframes:
         output.append(scaled_df.iloc[:len(df)].copy())
-        scaled_df = scaled_df.iloc[len(df):].copy()
+        scaled_df = scaled_df.iloc[len(df):]
     return output
 
 
@@ -672,9 +676,9 @@ def find_candidates_from_parquet(path_to_parquet: str,
     candidates_g = pd.concat([candidates_g, ZTF18aaadlpa_neighbors_g], ignore_index=True)
     candidates_r = pd.concat([candidates_r, ZTF18aaadlpa_neighbors_r], ignore_index=True)
     # Tag the ZTF18aaadlpa neighbors:
-    candidates_g['ZTF18aaadlpa_neighbors'] = 0
-    candidates_r['ZTF18aaadlpa_neighbors'] = 0
-    candidates_g.loc[candidates_g['objectId'].isin(ZTF18aaadlpa_neighbors_g['objectId']), 'ZTF18aaadlpa_neighbors'] = 1
-    candidates_r.loc[candidates_r['objectId'].isin(ZTF18aaadlpa_neighbors_r['objectId']), 'ZTF18aaadlpa_neighbors'] = 1
+    candidates_g['ZTF18aaadlpa_neighbors'] = 'no'
+    candidates_r['ZTF18aaadlpa_neighbors'] = 'no'
+    candidates_g.loc[candidates_g['objectId'].isin(ZTF18aaadlpa_neighbors_g['objectId']), 'ZTF18aaadlpa_neighbors'] = 'yes'
+    candidates_r.loc[candidates_r['objectId'].isin(ZTF18aaadlpa_neighbors_r['objectId']), 'ZTF18aaadlpa_neighbors'] = 'yes'
 
     return candidates_g, candidates_r
