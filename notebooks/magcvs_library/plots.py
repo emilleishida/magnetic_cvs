@@ -238,7 +238,7 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
             List of number of nearest neighbors to be explored. Defaults to [1, 2, 3].
 
         kwargs:
-            Additional keyword arguments to be passed to the find_candidates function. (score_threshold, max_candidates, feature_names, kept_columns)
+            Additional keyword arguments to be passed to the find_candidates function (score_threshold, max_candidates, feature_names, kept_columns).
     """
 
     # Store accuracies for boxplot:
@@ -305,7 +305,8 @@ def explore_params(positive: pd.DataFrame,
                    negative: pd.DataFrame,
                    nb_positive_objects_to_be_found: list[int] = [1, 2, 5],
                    score_thresholds: list[int] = [5, 6, 7, 8, 9, 10],
-                   N: int = 100
+                   N: int = 100,
+                   **kwargs
                    ) -> None:
     """
     Wrapper function of the accuracy_versus_n_neighbors function to explore the parameters of the algorithm.
@@ -326,7 +327,13 @@ def explore_params(positive: pd.DataFrame,
         
         N: int
             Number of iterations on which to compute the accuracy. At each iteration, a new random sample is taken from negative and positive. Defaults to 100.
+
+        kwargs:
+            Additional keyword arguments to be passed to the find_candidates function (max_candidates, feature_names, kept_columns). score_threshold shall not be passed as the value is taken from score_thresholds. If a value is assigned to kept_columns, it should still have the form ['objectId', 'class', ...] for the function to work properly.
     """
+
+    if 'kept_columns' not in kwargs:
+        kwargs['kept_columns'] = ['objectId', 'class']
 
     X = len(nb_positive_objects_to_be_found)
     Y = len(score_thresholds)
@@ -343,7 +350,7 @@ def explore_params(positive: pd.DataFrame,
                                         positive_sample_size=n,
                                         score_threshold=score_threshold,
                                         N=N,
-                                        kept_columns=['objectId', 'class'])
+                                        **kwargs)
             print('')
             clear_output()
     plt.tight_layout()
