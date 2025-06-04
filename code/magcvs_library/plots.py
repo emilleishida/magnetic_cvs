@@ -13,7 +13,7 @@ from .science import std_scale, find_candidates
 
 # Light function for heavy corner plots:
 def corner_plot(df: pd.DataFrame,
-                df2: pd.DataFrame = None,
+                df2: pd.DataFrame | None = None,
                 data_labels: list[str] | None = None,
                 normalize_hist: bool = True,
                 alpha: float = .1
@@ -198,7 +198,7 @@ def plot_distributions(*dfs: pd.DataFrame,
         ax.legend()
 
     # Hide unused subplots:
-    for j in range(i + 1, len(axes)):
+    for j in range(len(columns) + 1, len(axes)):
         fig.delaxes(axes[j])
 
     plt.tight_layout()
@@ -277,7 +277,7 @@ def accuracy_versus_n_neighbors(positive: pd.DataFrame,
         score_threshold = kwargs['score_threshold']
     else:
         score_threshold = find_candidates.__kwdefaults__['score_threshold']
-    plt.title(f'{positive_sample_size} CVs to be found\nScore threshold = {score_threshold}')
+    plt.title(f'{positive_sample_size} mCVs to be found\nScore threshold = {score_threshold}')
     sns.boxplot(x='n_neighbors', y='accuracy', data=df_plot, width=0.4, showfliers=False, fill=False, medianprops={"color": "r", "linewidth": 2}, whis=(5, 95))
 
     # Add count annotations on top of each box:
@@ -358,14 +358,63 @@ def explore_params(positive: pd.DataFrame,
     return
 
 
-def plot_periodogram(objectId: str) -> None:
+def plot_lightcurve(objectId: str) -> None:
     """
-    Plot the lightcurve and its associated Lomb-Scargle periodogram of an object given its Id.
+    Plot the lightcurve of an object given its Id.
 
     Parameters
     ---
         objectId: str
-            The Id of the object to plot.
+            The Id of the object to plot. Format: 'ZTF20abcdefg'
+    """
+
+    # Get the light curve data of the specified object:
+    obj = pd.read_json(io.BytesIO(requests.post("https://api.fink-portal.org/api/v1/objects",
+                                                json={"objectId": objectId,
+                                                      "columns": "i:objectId,i:jd,i:magpsf,i:sigmapsf,i:fid",
+                                                      "output-format": "json"
+                                                      }
+                                                ).content
+                                  )
+                       ).sort_values(by='i:jd')
+
+    # Extract time, magnitude, magnitude error and filter:
+    t = obj['i:jd'].values
+    m = obj['i:magpsf'].values
+    m_err = obj['i:sigmapsf'].values
+    fid = obj['i:fid'].values
+    
+    # Convert time values from JD to years:
+    t = (t - 2451545.0) / 365.25 + 2000
+
+    # Plot the lightcurve:
+    plt.figure(figsize=(14, 6))
+    plt.rcParams['font.size'] = 14
+
+    plt.errorbar(t[fid == 1], m[fid == 1], yerr=m_err[fid == 1], fmt='o', c='#15284F', label='g band')
+    plt.errorbar(t[fid == 2], m[fid == 2], yerr=m_err[fid == 2], fmt='o', c='#F5622E', label='r band')
+    plt.xlabel('Year')
+    plt.ylabel('Magnitude')
+    plt.legend(loc='upper right', ncol=2, facecolor='#D5D5D3', fontsize=10)
+    plt.ylim(m.max() + .5, m.min() - .5)
+    plt.gca().invert_yaxis()
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['bottom'].set_visible(False)
+    plt.gca().spines['left'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.grid(color='#D5D5D3')
+
+    return
+
+
+def plot_periodogram(objectId: str) -> None:
+    """
+    Plot the lightcurve and associated Lomb-Scargle periodogram of an object given its Id.
+
+    Parameters
+    ---
+        objectId: str
+            The Id of the object to plot. Format: 'ZTF20abcdefg'
     """
 
     # Get the light curve data of the specified object:
@@ -387,25 +436,39 @@ def plot_periodogram(objectId: str) -> None:
     # Compute the Lomb-Scargle periodogram:
     frequency, power = LombScargleMultiband(t, m, fid, m_err).autopower(nyquist_factor=1)
 
-    plt.figure(figsize=(12, 4))
+    plt.figure(figsize=(14, 5))
+    plt.rcParams['font.size'] = 14
     plt.suptitle(objectId)
 
     # Plot the periodogram:
     plt.subplot(1, 2, 1)
-    plt.plot(frequency, power)
     plt.title('Lomb-Scargle Periodogram')
+    plt.plot(frequency, power, color='#3C8DFF')
     plt.xlabel('Frequency (day$^{-1}$)')
     plt.ylabel('Lomb-Scargle Power')
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['bottom'].set_visible(False)
+    plt.gca().spines['left'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.grid(color='#D5D5D3')
 
+    # Convert time values from JD to years:
+    t = (t - 2451545.0) / 365.25 + 2000
     # Plot the lightcurve:
     plt.subplot(1, 2, 2)
-    plt.errorbar(t[fid == 1], m[fid == 1], yerr=m_err[fid == 1], fmt='o', c='g', label='g-band')
-    plt.errorbar(t[fid == 2], m[fid == 2], yerr=m_err[fid == 2], fmt='o', c='r', label='r-band')
-    plt.legend(loc='upper right')
     plt.title('Light Curve')
-    plt.xlabel('JD')
+    plt.errorbar(t[fid == 1], m[fid == 1], yerr=m_err[fid == 1], fmt='o', c='#15284F', label='g band')
+    plt.errorbar(t[fid == 2], m[fid == 2], yerr=m_err[fid == 2], fmt='o', c='#F5622E', label='r band')
+    plt.xlabel('Year')
     plt.ylabel('Magnitude')
+    plt.legend(loc='upper right', ncol=2, facecolor='#D5D5D3', fontsize=10)
+    plt.ylim(m.max() + .5, m.min() - .5)
     plt.gca().invert_yaxis()
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['bottom'].set_visible(False)
+    plt.gca().spines['left'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.grid(color='#D5D5D3')
 
     plt.tight_layout()
 
