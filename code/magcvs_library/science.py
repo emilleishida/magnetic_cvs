@@ -91,16 +91,30 @@ def get_lightcurve_data(Ids: list[str] | str,
             Light curve data for both filters in one dataframe. Returned if split_by_filter is False.
     """
 
-    if type(Ids) == str:
+    if isinstance(Ids, str):
         Ids = [Ids]
 
     if not split_by_filter:
-        data = pd.read_json(io.BytesIO(requests.post("https://api.fink-portal.org/api/v1/objects",
-                                                    json={"objectId": Ids, "columns": "i:objectId,i:jd,i:magpsf,i:sigmapsf,i:fid", "output-format": "json"}
-                                                    ).content
-                                      )
-                           )
-        return data
+        rows = []
+        for object in tqdm2(Ids):
+            data = pd.read_json(io.BytesIO(requests.post("https://api.fink-portal.org/api/v1/objects",
+                                                        json={"objectId": object, "columns": "i:objectId,i:jd,i:magpsf,i:sigmapsf,i:fid", "output-format": "json"}
+                                                        ).content
+                                        )
+                            ).sort_values(by='i:jd') # Sorting by ascending julian date for the extractor. (Default output is descending)
+            
+            jd = data['i:jd'].values
+            if len(jd) >= cut:
+                rows.append({
+                    'objectId': object,
+                    'time_range (yr)': round((jd.max() - jd.min()) / 365, 3),
+                    'nb_of_points': len(jd),
+                    'i:jd': jd,
+                    'i:magpsf': data['i:magpsf'].values,
+                    'i:sigmapsf': data['i:sigmapsf'].values
+                })
+
+        return pd.DataFrame(rows)
     # else:
 
     # Initializing the two dataframes which will contain the light curve data in g and r filter:
@@ -177,14 +191,11 @@ def sort_negative(negative_lc: pd.DataFrame,
     """
 
     # Removing potential positive class objects from the negative class:
-    negative_Ids = negative_lc['objectId'].values
-    intersect = np.intersect1d(negative_Ids, positive_Ids)
-    negative_lc = negative_lc[~np.isin(negative_Ids, intersect)]
-    
+    negative_lc = negative_lc[~negative_lc['objectId'].isin(positive_Ids)]
+
     # Splitting data by filter:
-    negative_lc_g = pd.DataFrame(columns=['objectId','time_range (yr)', 'nb_of_points', 'i:jd', 'i:magpsf', 'i:sigmapsf'])
-    negative_lc_r = pd.DataFrame(columns=['objectId','time_range (yr)', 'nb_of_points', 'i:jd', 'i:magpsf', 'i:sigmapsf'])
-    for _, row in tqdm2(list(negative_lc.iterrows()), desc='Splitting data by filter'): # Remove list() here for slight better efficiency but no progress bar
+    rows_g, rows_r = [], []
+    for _, row in tqdm2(negative_lc.iterrows(), total=len(negative_lc), desc='Splitting data by filter'): # Remove list() here for slight better efficiency but no progress bar
         jd_g, magpsf_g, sigmapsf_g = np.array([]), np.array([]), np.array([])
         jd_r, magpsf_r, sigmapsf_r = np.array([]), np.array([]), np.array([])
         for index, fid in enumerate(row['i:fid']):
@@ -198,30 +209,27 @@ def sort_negative(negative_lc: pd.DataFrame,
                 sigmapsf_r = np.append(sigmapsf_r, row['i:sigmapsf'][index])
         if len(jd_g) >= 4:
             sorted_indices_g = np.argsort(jd_g)
-            new_row_g = pd.DataFrame([dict(zip(negative_lc_g.columns,
-                                               [
-                                                   row['objectId'],
-                                                   round((max(jd_g)-min(jd_g))/365, 3),
-                                                   len(jd_g),
-                                                   jd_g[sorted_indices_g],
-                                                   magpsf_g[sorted_indices_g],
-                                                   sigmapsf_g[sorted_indices_g]
-                                                ]))])
-            negative_lc_g = pd.concat([negative_lc_g, new_row_g], ignore_index=True)
+            
+            rows_g.append({
+                'objectId': row['objectId'],
+                'time_range (yr)': round((jd_g.max() - jd_g.min()) / 365, 3),
+                'nb_of_points': len(jd_g),
+                'i:jd': jd_g[sorted_indices_g],
+                'i:magpsf': magpsf_g[sorted_indices_g],
+                'i:sigmapsf': sigmapsf_g[sorted_indices_g]
+            })
         if len(jd_r) >= 4:
             sorted_indices_r = np.argsort(jd_r)
-            new_row_r = pd.DataFrame([dict(zip(negative_lc_r.columns,
-                                               [
-                                                   row['objectId'],
-                                                   round((max(jd_r)-min(jd_r))/365, 3),
-                                                   len(jd_r),
-                                                   jd_r[sorted_indices_r],
-                                                   magpsf_r[sorted_indices_r],
-                                                   sigmapsf_r[sorted_indices_r]
-                                                ]))])
-            negative_lc_r = pd.concat([negative_lc_r, new_row_r], ignore_index=True)
+            rows_r.append({
+                'objectId': row['objectId'],
+                'time_range (yr)': round((jd_r.max() - jd_r.min()) / 365, 3),
+                'nb_of_points': len(jd_r),
+                'i:jd': jd_r[sorted_indices_r],
+                'i:magpsf': magpsf_r[sorted_indices_r],
+                'i:sigmapsf': sigmapsf_r[sorted_indices_r]
+            })
 
-    return negative_lc_g, negative_lc_r
+    return pd.DataFrame(rows_g), pd.DataFrame(rows_r)
 
 
 def extract_features(light_curve_data: pd.DataFrame,
@@ -652,9 +660,6 @@ def find_candidates_from_parquet(path_to_parquet: str,
     # Splitting the data from the night by filter and removing potential already known positive objects:
     other_lc_g, other_lc_r = sort_negative(other_lc, all_positive_Ids)
 
-    other_lc_g.to_parquet('../../data/20250410/light_curves_g.parquet')
-    other_lc_r.to_parquet('../../data/20250410/light_curves_r.parquet')
-
     # Extracting the features from the light curves:
     other_features_g = extract_features(other_lc_g)
     other_features_r = extract_features(other_lc_r)
@@ -682,3 +687,5 @@ def find_candidates_from_parquet(path_to_parquet: str,
     candidates_r.loc[candidates_r['objectId'].isin(ZTF18aaadlpa_neighbors_r['objectId']), 'ZTF18aaadlpa_neighbors'] = 'yes'
 
     return candidates_g, candidates_r
+
+
