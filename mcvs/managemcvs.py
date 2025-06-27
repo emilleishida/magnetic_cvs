@@ -52,7 +52,9 @@ def add_new_mCVs(objectIds: str | list[str],
     print(f'{", ".join(objectIds)} successfully added to mCVs list.')
 
 
-def remove_mCVs(objectIds: str | list[str]) -> None:
+def remove_mCVs(objectIds: str | list[str],
+                force: bool = False
+                ) -> None:
     """
     Remove mCVs from the current mCVs list.
     
@@ -60,6 +62,9 @@ def remove_mCVs(objectIds: str | list[str]) -> None:
     ---
         objectIds: str | list[str]
             ObjectId or list of objectIds to be removed from the current mCVs list.
+
+        force: bool, optional
+            If True, skips user confirmation. Defaults to False.
     """
     
     mCVs = pd.read_csv(get_mCVs_path())
@@ -72,11 +77,12 @@ def remove_mCVs(objectIds: str | list[str]) -> None:
         if obj not in mCVs['objectId'].values:
             raise ValueError(f'{obj} not found in current mCVs list. Please update the list with `add_new_mCVs` function.')
 
-    # Ask for confirmation:
-    confirmation = input(f'Please confirm removal of {len(objectIds)} mCV(s): {", ".join(objectIds)}. [Y/n]: ')
-    if confirmation != 'Y':
-        print('Removal cancelled.')
-        return
+    if not force:
+        # Ask for confirmation:
+        confirmation = input(f'Please confirm removal of {len(objectIds)} mCV(s): {", ".join(objectIds)}. [Y/n]: ')
+        if confirmation != 'Y':
+            print('Removal cancelled.')
+            return
 
     # Removing mCVs:
     mCVs = mCVs[~mCVs['objectId'].isin(objectIds)]
