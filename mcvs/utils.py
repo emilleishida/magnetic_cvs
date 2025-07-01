@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import io
 import requests
 from tqdm import tqdm
@@ -29,7 +30,9 @@ def tqdm2(iterable,
     return tqdm(iterable, **default_kwargs)
 
 # Wrapper for Fink API to get lightcurve data in a pandas DataFrame:
-def lc_data_from_api(objectId: str) -> pd.DataFrame:
+def lc_data_from_api(objectId: str,
+                     columns: str = "i:objectId,i:jd,i:magpsf,i:sigmapsf"
+                     ) -> pd.DataFrame:
     """
     Get lightcurve data (both g and r bands considered) for a given objectId from the Fink API.
 
@@ -38,6 +41,9 @@ def lc_data_from_api(objectId: str) -> pd.DataFrame:
         objectId: str
             The ZTF object ID (format: ZTFXXaaaaaa) for which to retrieve the lightcurve data.
 
+        columns: str, optional
+            The columns to be retrieved from the Fink API. Defaults to "i:objectId,i:jd,i:magpsf,i:sigmapsf".
+
     Returns
     ---
         lightcurve_data: pd.DataFrame
@@ -45,7 +51,7 @@ def lc_data_from_api(objectId: str) -> pd.DataFrame:
     """
 
     lightcurve_data = pd.read_json(io.BytesIO(requests.post("https://api.fink-portal.org/api/v1/objects",
-                                                json={"objectId": objectId, "columns": "i:objectId,i:jd,i:magpsf,i:sigmapsf", "output-format": "json"}
+                                                json={"objectId": objectId, "columns": columns, "output-format": "json"}
                                                 ).content
                                 )
                     ).sort_values(by='i:jd') # Sorting by ascending julian date for the feature extractor (default output is descending).
@@ -235,5 +241,48 @@ def extract_missing_features(light_curve_data: pd.DataFrame,
         return output_df, feature_names
     else:
         return output_df
+
+
+def fink_lightcurve(objectId: str) -> None:
+    """
+    Plot the lightcurve of an object given its Id using the Fink API. Design and color scheme faithful to the visual style of the Fink portal.
+
+    Parameters
+    ---
+        objectId: str
+            The Id of the object to plot. Format: 'ZTF20abcdefg'
+    """
+
+    # Get the light curve data of the specified object:
+    lightcurve = lc_data_from_api(objectId, columns="i:objectId,i:jd,i:magpsf,i:sigmapsf,i:fid")
+
+    # Extract time, magnitude, magnitude error and filter:
+    t = lightcurve['i:jd'].values
+    m = lightcurve['i:magpsf'].values
+    m_err = lightcurve['i:sigmapsf'].values
+    fid = lightcurve['i:fid'].values
+
+    # Convert time values from JD to years:
+    t = (t - 2451545.0) / 365.25 + 2000
+
+    # Plot the lightcurve:
+    plt.figure(figsize=(14, 6))
+    plt.rcParams['font.size'] = 14
+    plt.title(objectId)
+
+    plt.errorbar(t[fid == 1], m[fid == 1], yerr=m_err[fid == 1], fmt='o', c='#15284F', label='g band')
+    plt.errorbar(t[fid == 2], m[fid == 2], yerr=m_err[fid == 2], fmt='o', c='#F5622E', label='r band')
+    plt.xlabel('Year')
+    plt.ylabel('Magnitude')
+    plt.legend(loc='upper right', ncol=2, facecolor='#D5D5D3', fontsize=10)
+    plt.gca().invert_yaxis()
+    plt.ylim(m.max() + .5, m.min() - .5)
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['bottom'].set_visible(False)
+    plt.gca().spines['left'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.grid(color='#D5D5D3')
+
+    return
 
 
