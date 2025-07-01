@@ -7,3 +7,8 @@ from .managemcvs import (
     tag_bogus,
 )
 from .updatemcvsfeatures import update_mCVs_features
+
+from .utils import (
+    extract_all_features,
+    extract_missing_features
+)

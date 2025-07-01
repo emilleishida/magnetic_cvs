@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from .utils import tqdm2, lc_data_from_api, extract_features
+from .utils import tqdm2, lc_data_from_api, extract_all_features
 from .managemcvs import get_mCVs_path
 
 
@@ -76,7 +76,7 @@ def update_mCVs_features(return_features: bool = False) -> None | pd.DataFrame:
 
     mCVs_lightcurves = get_mcvs_lightcurve_data()
 
-    mCVs_features = extract_features(mCVs_lightcurves)
+    mCVs_features = extract_all_features(mCVs_lightcurves)
 
     mCVs_features.to_parquet(get_mCVs_path().replace('.csv', '_features.parquet'), index=False)
 
