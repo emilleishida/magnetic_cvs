@@ -44,7 +44,7 @@ def fit_scale(positive: pd.DataFrame,
     unknown_scaled[columns] = scaler.transform(unknown[columns])
 
     # Adding back other unrelated columns:
-    for col_positive, col_unknown in zip(positive_scaled.columns, unknown_scaled.columns):
+    for col_positive, col_unknown in zip(positive.columns, positive.columns):
         if col_positive not in columns:
             positive_scaled[col_positive] = positive[col_positive].values
         if col_unknown not in columns:
