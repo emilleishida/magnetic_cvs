@@ -30,7 +30,7 @@ Fink science module to find magnetic cataclysmic variable stars. Algorithm based
    ```python
    import mcvs
 
-   mcvs.get_data_path()
+   mcvs.utils.get_data_path()
    ```
 
 ## 🌌 Usage Examples
@@ -39,7 +39,7 @@ Fink science module to find magnetic cataclysmic variable stars. Algorithm based
 
 1. Load your lightcurve DataFrame of objects to be evaluated.  
    Each row should represent the lightcurve data for a single object, and the DataFrame should contain columns `'objectId'`, `'i:jd'`, `'i:magpsf'` and `'i:sigmapsf'`.  
-   Each lightcurve data should be sorted by ascending Julian date and should not contain any missing values. If that is not the case, check the keyword arguments of the `mcvs.extract_all_features()` function in step 2.
+   Each lightcurve data should be sorted by ascending Julian date and should not contain any missing values. If that is not the case, check the keyword arguments of the `mcvs.extract_features()` function in step 2.
    ```python
    import mcvs
    import pandas as pd

@@ -76,7 +76,7 @@ def rank_features_by_mutual_info(feature_names: list[str]) -> None:
         negative = pd.read_parquet(get_data_path('negative_features.parquet'))
     except FileNotFoundError:
         raise FileNotFoundError(
-            'Negative features file not found. Please download the file at https://zenodo.org/communities/fink/TEMPORARY-LINK-NEGATIVE-FEATURES and save it as "negative_features.parquet" under the mcvs/data directory of this package.'
+            'Negative features file not found. Please download the file at https://zenodo.org/communities/fink/TEMPORARY-LINK-NEGATIVE-FEATURES and save it as "negative_features.parquet" under the data directory of this package. Run `mcvs.get_data_path()` to find where the directory is on your computer.'
         )
 
     # Scale features:
