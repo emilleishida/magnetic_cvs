@@ -1,5 +1,5 @@
 # magnetic_cataclysmic_variables
-Fink science module to find magnetic cataclysmic variable stars.
+Fink science module to find magnetic cataclysmic variable stars. Algorithm based on statistical features computed with the [light-curve package](https://github.com/light-curve/light-curve-python) from [Malanchev et al., 2021](https://ui.adsabs.harvard.edu/abs/2021MNRAS.502.5147M/abstract).
 
 ## 🔧 Installation Guide
 
