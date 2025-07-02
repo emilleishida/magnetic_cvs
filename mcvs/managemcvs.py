@@ -1,16 +1,9 @@
 import pandas as pd
-from pathlib import Path
-
-
-def get_mCVs_path() -> Path:
-    """
-    Get the absolute path to the mCVs CSV file.
-    """
-    return str(Path(__file__).parent / 'data' / 'mCVs.csv')
+from .utils import get_data_path
 
 
 def add_new_mCVs(objectIds: str | list[str],
-                 is_polar: bool | list[bool],
+                 is_polar: bool | list[bool] = False,
                  is_bogus: bool | list[bool] = False,
                  objectId2: str | list[str | None] | None = None
                  ) -> None:
@@ -22,8 +15,8 @@ def add_new_mCVs(objectIds: str | list[str],
         objectIds: str | list[str]
             ObjectId or list of objectIds to be added to the current mCVs list.
         
-        is_polar: bool | list[bool]
-            Wether to tag added objects as polars (True) or not (False).
+        is_polar: bool | list[bool], optional
+            Wether to tag added objects as polars (True) or not (False). Defaults to False.
         
         is_bogus: bool | list[bool], optional
             Wether to tag added objects as bogus (True) or not (False). Defaults to False.
@@ -31,8 +24,8 @@ def add_new_mCVs(objectIds: str | list[str],
         objectId2: str | list[str | None] | None, optional
             Object's second identifier, if applicable. Lightcurves from the two Ids will be treated as one. If provided, should match the length of `objectIds`. Defaults to None.
     """
-    
-    mCVs = pd.read_csv(get_mCVs_path())
+
+    mCVs = pd.read_csv(get_data_path('mCVs.csv'))
 
     if isinstance(objectIds, str):
         objectIds = [objectIds]
@@ -47,7 +40,7 @@ def add_new_mCVs(objectIds: str | list[str],
     mCVs = pd.concat([mCVs, new_mCVs], ignore_index=True)
     
     # Save updated mCVs DataFrame:
-    mCVs.to_csv(get_mCVs_path(), index=False)
+    mCVs.to_csv(get_data_path('mCVs.csv'), index=False)
     
     print(f'{", ".join(objectIds)} successfully added to mCVs list.')
 
@@ -67,7 +60,7 @@ def remove_mCVs(objectIds: str | list[str],
             If True, skips user confirmation. Defaults to False.
     """
     
-    mCVs = pd.read_csv(get_mCVs_path())
+    mCVs = pd.read_csv(get_data_path('mCVs.csv'))
 
     if isinstance(objectIds, str):
         objectIds = [objectIds]
@@ -88,7 +81,7 @@ def remove_mCVs(objectIds: str | list[str],
     mCVs = mCVs[~mCVs['objectId'].isin(objectIds)]
 
     # Save updated mCVs DataFrame:
-    mCVs.to_csv(get_mCVs_path(), index=False)
+    mCVs.to_csv(get_data_path('mCVs.csv'), index=False)
     
     print(f'{", ".join(objectIds)} successfully removed from mCVs list.')
 
@@ -108,7 +101,7 @@ def tag_polars(objectIds: str | list[str],
             If True, tags the objectId(s) as non-polar(s) instead. Defaults to False.
     """
     
-    mCVs = pd.read_csv(get_mCVs_path())
+    mCVs = pd.read_csv(get_data_path('mCVs.csv'))
     
     if isinstance(objectIds, str):
         objectIds = [objectIds]
@@ -125,7 +118,7 @@ def tag_polars(objectIds: str | list[str],
         mCVs.loc[mCVs['objectId'].isin(objectIds), 'is_polar'] = True
     
     # Save updated mCVs DataFrame:
-    mCVs.to_csv(get_mCVs_path(), index=False)
+    mCVs.to_csv(get_data_path('mCVs.csv'), index=False)
     
     print(f'{", ".join(objectIds)} successfully tagged as {"non-polar" if not_polar else "polar"}.')
 
@@ -145,7 +138,7 @@ def tag_bogus(objectIds: str | list[str],
             If True, tags the objectId(s) as non-bogus instead. Defaults to False.
     """
     
-    mCVs = pd.read_csv(get_mCVs_path())
+    mCVs = pd.read_csv(get_data_path('mCVs.csv'))
     
     if isinstance(objectIds, str):
         objectIds = [objectIds]
@@ -162,7 +155,7 @@ def tag_bogus(objectIds: str | list[str],
         mCVs.loc[mCVs['objectId'].isin(objectIds), 'is_bogus'] = True
     
     # Save updated mCVs DataFrame:
-    mCVs.to_csv(get_mCVs_path(), index=False)
+    mCVs.to_csv(get_data_path('mCVs.csv'), index=False)
     
     print(f'{", ".join(objectIds)} successfully tagged as {"non-bogus" if not_bogus else "bogus"}.')
 

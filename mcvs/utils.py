@@ -1,10 +1,29 @@
 import pandas as pd
 import numpy as np
+from pathlib import Path
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
 import io
 import requests
 from tqdm import tqdm
 import light_curve as lc
+
+
+def get_data_path(file: str = '') -> str:
+    """
+    Get the absolute path to the data directory of this package.
+    
+    Parameters
+    ---
+        file: str, optional
+            The file name to be appended at the end of the path.
+    
+    Returns
+    ---
+        data_path: str
+            The absolute path to the data directory of this package as a string.
+    """
+    return str(Path(__file__).parent / 'data') + '/' + file
 
 
 # Wrapper for tqdm with default arguments:
@@ -59,7 +78,7 @@ def lc_data_from_api(objectId: str,
     return lightcurve_data
 
 
-def extract_all_features(light_curve_data: pd.DataFrame,
+def extract_features(light_curve_data: pd.DataFrame,
                      return_names: bool = False,
                      **kwargs
                      ) -> pd.DataFrame:
@@ -160,6 +179,7 @@ def extract_all_features(light_curve_data: pd.DataFrame,
         return output_df
 
 
+'''
 def extract_missing_features(light_curve_data: pd.DataFrame,
                              return_names: bool = False,
                              **kwargs
@@ -241,6 +261,56 @@ def extract_missing_features(light_curve_data: pd.DataFrame,
         return output_df, feature_names
     else:
         return output_df
+'''
+
+
+def fit_scale(positive: pd.DataFrame,
+              unknown: pd.DataFrame,
+              columns: list[str]
+              ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Standardize unknown using statistics from positive.
+
+    Parameters
+    ---
+        positive: pd.DataFrame
+            DataFrame containing features of the positive class objects.
+
+        unknown: pd.DataFrame
+            DataFrame containing features of the objects to evaluate.
+
+        columns: list[str]
+            List of feature names in the DataFrames columns to standardize.
+
+    Returns
+    ---
+        positive_scaled: pd.DataFrame
+            DataFrame with features of the positive class objects standardized.
+
+        unknown_scaled: pd.DataFrame
+            DataFrame with features of the objects to evaluate standardized using the same statistics as the positive class.
+    """
+
+    # Fit the scaler on positives:
+    scaler = StandardScaler()
+    scaler.fit(positive[columns])
+
+    positive_scaled = positive.copy()
+    unknown_scaled = unknown.copy()
+
+    # Apply the scaler:
+    positive_scaled[columns] = scaler.transform(positive[columns])
+    unknown_scaled[columns] = scaler.transform(unknown[columns])
+
+    # Adding back other unrelated columns:
+    for col in positive.columns:
+        if col not in columns:
+            positive_scaled[col] = positive[col].values
+    for col in unknown.columns:
+        if col not in columns:
+            unknown_scaled[col] = unknown[col].values
+
+    return positive_scaled, unknown_scaled
 
 
 def fink_lightcurve(objectId: str) -> None:

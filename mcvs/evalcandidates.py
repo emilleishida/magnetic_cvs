@@ -1,56 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-from sklearn.preprocessing import StandardScaler
-from .managemcvs import get_mCVs_path
-
-
-def fit_scale(positive: pd.DataFrame,
-              unknown: pd.DataFrame,
-              columns: list[str]
-              ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Standardize unknown using statistics from positive.
-
-    Parameters
-    ---
-        positive: pd.DataFrame
-            DataFrame containing features of the positive class objects.
-
-        unknown: pd.DataFrame
-            DataFrame containing features of the objects to evaluate.
-
-        columns: list[str]
-            List of feature names in the DataFrames columns to standardize.
-
-    Returns
-    ---
-        positive_scaled: pd.DataFrame
-            DataFrame with features of the positive class objects standardized.
-
-        unknown_scaled: pd.DataFrame
-            DataFrame with features of the objects to evaluate standardized using the same statistics as the positive class.
-    """
-
-    # Fit the scaler on positives:
-    scaler = StandardScaler()
-    scaler.fit(positive[columns])
-
-    positive_scaled = positive.copy()
-    unknown_scaled = unknown.copy()
-
-    # Apply the scaler:
-    positive_scaled[columns] = scaler.transform(positive[columns])
-    unknown_scaled[columns] = scaler.transform(unknown[columns])
-
-    # Adding back other unrelated columns:
-    for col_positive, col_unknown in zip(positive.columns, positive.columns):
-        if col_positive not in columns:
-            positive_scaled[col_positive] = positive[col_positive].values
-        if col_unknown not in columns:
-            unknown_scaled[col_unknown] = unknown[col_unknown].values
-
-    return positive_scaled, unknown_scaled
+from .utils import fit_scale, get_data_path
 
 
 def eval_candidates(unknown: pd.DataFrame,
@@ -58,7 +9,7 @@ def eval_candidates(unknown: pd.DataFrame,
                     n_neighbors: int = 1,
                     score_threshold: int = 1,
                     max_candidates: int | None = None,
-                    feature_names: list[str] | None = None,
+                    feature_names: list[str] | str | None = None,
                     kept_columns: list[str] = ['objectId']
                     ) -> pd.DataFrame:
     """
@@ -80,8 +31,8 @@ def eval_candidates(unknown: pd.DataFrame,
         max_candidates: int | None, optional
             Maximum number of candidates to return. If None, returns all objects. Defaults to None.
 
-        feature_names: list[str] | None, optional
-            List of feature names to use for the nearest neighbors algorithm. If None, default feature names are used. Defaults to None.
+        feature_names: list[str] | str | None, optional
+            List of feature names to use for the nearest neighbors algorithm. Also accepts the value 'all' in which case all features will be considered. If None, default feature names are used based on mutual information scores. Defaults to None.
 
         kept_columns: list[str], optional
             List of columns to keep in the output DataFrame. Note that if different from default, it should still include 'objectId'. Defaults to ['objectId'].
@@ -92,9 +43,11 @@ def eval_candidates(unknown: pd.DataFrame,
             Candidates for the positive class ordered by the number of times they appear in the nearest neighbors of the positive objects.
     """
 
-    positive = pd.read_parquet(get_mCVs_path().replace('.csv', '_features.parquet'))
+    positive = pd.read_parquet(get_data_path('mCVs_features.parquet'))
 
     if feature_names is None: # If no feature names are provided, use the default ones:
+        feature_names = pd.read_csv(get_data_path('feature_scores.csv'))['feature'].tolist()[:20]
+    elif feature_names == 'all':
         feature_names = [
         'amplitude',
         'anderson_darling_normal',

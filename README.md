@@ -26,7 +26,12 @@ Fink science module to find magnetic cataclysmic variable stars.
    ```
 
 5. (Optional) Download data:  
-   If you find new mCVs and wish to [update the set](#manage-mcvs-base-set) used as a base for the algorithm in this package in order to make it more representative, you will need to download [additional data from zenodo](https://zenodo.org/communities/fink/TEMPORARY-LINK-NEGATIVE-FEATURES). The file should be saved as `"negative_features.parquet"` under the `mcvs/data` directory of this package.
+   If you find new mCVs and wish to [update the set](#manage-mcvs-base-set) used as a base for the algorithm in this package in order to make it more representative, you will need to download [additional data from zenodo](https://zenodo.org/communities/fink/TEMPORARY-LINK-NEGATIVE-FEATURES). The file should be saved as `"negative_features.parquet"` under the `data` directory of this package. In order to find where that directory is, run:
+   ```python
+   import mcvs
+
+   mcvs.get_data_path()
+   ```
 
 ## 🌌 Usage Examples
 
@@ -62,7 +67,7 @@ Fink science module to find magnetic cataclysmic variable stars.
    import mcvs
    import pandas as pd
 
-   mcvs_df = pd.read_csv(mcvs.get_mCVs_path())
+   mcvs_df = pd.read_csv(mcvs.get_data_path('mCVs.csv'))
    mcvs_df
    ```
 
