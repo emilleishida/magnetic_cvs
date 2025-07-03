@@ -158,6 +158,13 @@ def extract_features(light_curve_data: pd.DataFrame,
 
     feature_names = extractor1.names + extractor2.names
 
+    # The Fink API returns lightcurve data values with different types (float64 or float32).
+    # The extractor requires jd, mag and err values to have the same types.
+    # Setting everything to float64:
+    light_curve_data['i:jd'] = light_curve_data['i:jd'].apply(lambda arr: arr.astype(np.float64))
+    light_curve_data['i:magpsf'] = light_curve_data['i:magpsf'].apply(lambda arr: arr.astype(np.float64))
+    light_curve_data['i:sigmapsf'] = light_curve_data['i:sigmapsf'].apply(lambda arr: arr.astype(np.float64))
+
     # Extracting the features for each object in the lightcurve data:
     features = []
     for _, row in tqdm2(light_curve_data.iterrows(), desc='Extracting features', total=len(light_curve_data)):
