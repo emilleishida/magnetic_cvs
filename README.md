@@ -9,7 +9,7 @@ Fink science module to find magnetic cataclysmic variable stars. Algorithm based
    cd magnetic_cataclysmic_variables
    ```
 
-2. (Optional but recommended) Create a virtual environment:
+2. (Optional) Create a virtual environment:
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate

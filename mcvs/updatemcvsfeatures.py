@@ -11,7 +11,7 @@ def get_mcvs_lightcurve_data(cut: int = 100) -> pd.DataFrame:
 
     Parameters
     ---
-        cut: int
+        cut: int, optional
             Quality cut for the number of points in the lightcurve. Defaults to 100, meaning only lightcurves with at least 100 points (considering the two bands) will be considered.
 
     Returns
@@ -23,7 +23,7 @@ def get_mcvs_lightcurve_data(cut: int = 100) -> pd.DataFrame:
     # Load the current mCVs dataset:
     mCVs = pd.read_csv(get_data_path('mCVs.csv'))
     
-    # Iterate over the mCVs and retrieve lifghtcurves:
+    # Iterate over the mCVs and retrieve lightcurves:
     rows = []
     for _, row in tqdm2(mCVs.iterrows(), desc='Retrieving lightcurves with Fink API', total=len(mCVs)):
         if row['is_bogus']: # Skip bogus lightcurves.
