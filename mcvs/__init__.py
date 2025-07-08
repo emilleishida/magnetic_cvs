@@ -1,9 +1,12 @@
-from .evalcandidates import eval_candidates
+from .evalcandidates import (
+    eval_candidates,
+    eval_distance
+)
 from .managemcvs import (
     add_new_mCVs,
     remove_mCVs,
     tag_polars,
-    tag_bogus,
+    tag_bogus
 )
 from .updatemcvsfeatures import update_mCVs_features
 

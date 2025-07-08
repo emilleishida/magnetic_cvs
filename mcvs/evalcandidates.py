@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-from .utils import fit_scale, get_data_path
+from .utils import fit_scale, get_data_path, lc_data_from_api, tqdm2, extract_features
 
 
 def eval_candidates(unknown: pd.DataFrame,
@@ -46,7 +46,7 @@ def eval_candidates(unknown: pd.DataFrame,
     positive = pd.read_parquet(get_data_path('mCVs_features.parquet'))
 
     if feature_names is None: # If no feature names are provided, use the default ones:
-        feature_names = pd.read_csv(get_data_path('feature_scores.csv'))['feature'].tolist()[:20]
+        feature_names = pd.read_csv(get_data_path('feature_scores.csv'))['feature'].tolist()[:20] # Taking the first 20 out of the 52 features is an arbitrary choice here. Dimensionality reduction was explored, but no significative performance improvement was observed. This is due to the poverty of the positive dataset. With more data and with higher quality, one could rework the dimensionality reduction or even think of a better algorithm in order to improve performances.
     elif feature_names == 'all':
         feature_names = [
         'amplitude',
@@ -129,3 +129,91 @@ def eval_candidates(unknown: pd.DataFrame,
     else:
         out = out.iloc[:max_candidates] # Returning only the first 'max_candidates' candidates.
         return out[out['score'] >= score_threshold]
+
+
+def get_lightcurve_data(objectIds: list[str],
+                        cut: int = 100
+                        ) -> pd.DataFrame:
+    """
+    Get full lightcurve data of given objects using Fink API.
+
+    Parameters
+    ---
+        objectIds: list[str]
+            List of ZTF object Ids for which to query lightcurves.
+
+        cut: int, optional
+            Quality cut for the number of points in the lightcurve. Defaults to 100, meaning only lightcurves with at least 100 points (considering the two bands) will be considered.
+
+    Returns
+    ---
+        lightcurve_data: pd.Dataframe
+            DataFrame containing the lightcurve data with columns: 'objectId', 'time_range (yr)' (the time range between first and last detection), 'nb_of_points' (the number of points in the lightcurve), 'i:jd', 'i:magpsf', 'i:sigmapsf'.
+    """
+
+    # Iterate over the Ids and retrieve lightcurves:
+    rows = []
+    for objectId in tqdm2(objectIds, desc='Retrieving lightcurves with Fink API'):
+        data = lc_data_from_api(objectId)
+
+        # Add lightcurve data of current mCV as one row for the output DataFrame:
+        rows.append({
+                'objectId': objectId,
+                'time_range (yr)': round((np.max(data['i:jd'].values) - np.min(data['i:jd'].values)) / 365, 3),
+                'nb_of_points': len(data['i:jd'].values),
+                'i:jd': data['i:jd'].values,
+                'i:magpsf': data['i:magpsf'].values,
+                'i:sigmapsf': data['i:sigmapsf'].values
+        })
+
+    # Put all rows into a DataFrame:
+    lightcurve_data = pd.DataFrame(rows)
+
+    return lightcurve_data[lightcurve_data['nb_of_points'] >= cut].reset_index(drop=True)
+
+
+def eval_distance(objectIds: list[str]) -> tuple[pd.DataFrame, pd.Series]:
+    """
+    Evaluate distances to the center distribution of mCVs for given objects.  
+    **/!\\ This function uses the Fink API to concatenate full lightcurves. It is not designed for large queries.**  
+    This function is intended to be used on high-score objects obtained with the `eval_candidates` function, allowing to have more precise information on how likely candidates are bona-fide mCVs according to the current state of the algorithm.
+
+    Parameters
+    ---
+        objectIds: list[str]
+            List of ZTF objectIds for which to evaluate their distance to the mCVs center distribution in the feature space.
+
+    Returns
+    ---
+        candidates: pd.DataFrame
+            DataFrame containing given candidates sorted by increasing distance to the mCVs center distribution.
+
+        mCVs_statistics: pd.Series
+            Distance statistics of the mCVs set for comparison.
+    """
+
+    # Load mCVs feature data:
+    mCVs_features = pd.read_parquet(get_data_path('mCVs_features.parquet'))
+
+    # Get full lightcurves of given objects:
+    unknown_lightcurves = get_lightcurve_data(objectIds)
+    # Compute associated features:
+    unknown_features, feature_names = extract_features(unknown_lightcurves, return_names=True)
+
+    # Standardizing the features:
+    mCVs_features, unknown_features = fit_scale(mCVs_features, unknown_features, columns=feature_names)
+
+    # Compute Euclidean distance from the origin (center of the mCVs distribution after scaling):
+    unknown_distances = np.linalg.norm(unknown_features[feature_names], axis=1) #/ np.sqrt(len(feature_names))
+    mCVs_distances = np.linalg.norm(mCVs_features[feature_names], axis=1) #/ np.sqrt(len(feature_names))
+
+    # Add distances and remove feature columns:
+    candidates = unknown_features.drop(columns=feature_names).copy()
+    candidates['distance'] = unknown_distances
+    mCVs = mCVs_features.drop(columns=feature_names).copy()
+    mCVs['distance'] = mCVs_distances
+
+    # Sort by distance and return:
+    return candidates.sort_values(by='distance', ascending=True).reset_index(drop=True), mCVs['distance'].describe()
+
+
