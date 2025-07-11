@@ -192,6 +192,12 @@ def eval_distance(objectIds: list[str]) -> tuple[pd.DataFrame, pd.Series]:
             Distance statistics of the mCVs set for comparison.
     """
 
+    # ---
+    # Potential future improvements:
+    # Use the SNAD API instead of Fink API to get augmented data (from data release) for the objects to be evaluated AND the mCVs (so features should be computed once again but with this augmented data).
+    # Plus, use dimensionality reduction.
+    # ---
+
     # Load mCVs feature data:
     mCVs_features = pd.read_parquet(get_data_path('mCVs_features.parquet'))
 
