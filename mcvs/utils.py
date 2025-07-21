@@ -48,17 +48,17 @@ def tqdm2(iterable,
 
     return tqdm(iterable, **default_kwargs)
 
-# Wrapper for Fink API to get lightcurve data in a pandas DataFrame:
-def lc_data_from_api(objectId: str,
+# Wrapper for Fink API to get lightcurve data of a single object in a pandas DataFrame (one point of the lightcurve per row):
+def single_object_lc_data(objectId: str,
                      columns: str = "i:objectId,i:jd,i:magpsf,i:sigmapsf"
                      ) -> pd.DataFrame:
     """
-    Get lightcurve data (both g and r bands considered) for a given objectId from the Fink API.
+    Get full lightcurve data (both g and r bands considered) for one given objectId using the Fink API.
 
     Parameters
     ---
         objectId: str
-            The ZTF object ID (format: ZTFXXaaaaaa) for which to retrieve the lightcurve data.
+            The ZTF object ID (format: 'ZTFXXaaaaaa') for which to retrieve the lightcurve data.
 
         columns: str, optional
             The columns to be retrieved from the Fink API. Defaults to "i:objectId,i:jd,i:magpsf,i:sigmapsf".
@@ -78,16 +78,58 @@ def lc_data_from_api(objectId: str,
     return lightcurve_data
 
 
-def extract_features(light_curve_data: pd.DataFrame,
+# Wrapper for Fink API to get lightcurve data of multiple objects in a pandas DataFrame (one object per row):
+def many_objects_lc_data(objectIds: list[str],
+                        cut: int = 100
+                        ) -> pd.DataFrame:
+    """
+    Get full lightcurve data (both g and r bands considered) of given objectIds using the Fink API.
+
+    Parameters
+    ---
+        objectIds: list[str]
+            List of ZTF Ids for which to query lightcurves.
+
+        cut: int, optional
+            Quality cut for the number of points in the lightcurve. Defaults to 100, meaning only lightcurves with at least 100 points (considering the two bands) will be considered.
+
+    Returns
+    ---
+        lightcurve_data: pd.Dataframe
+            DataFrame containing the lightcurve data with columns: 'objectId', 'time_range (yr)' (the time range between first and last detection), 'nb_of_points' (the number of points in the lightcurve), 'i:jd', 'i:magpsf', 'i:sigmapsf'.
+    """
+
+    # Iterate over the Ids and retrieve lightcurves:
+    rows = []
+    for objectId in tqdm2(objectIds, desc='Retrieving lightcurves with Fink API'):
+        data = single_object_lc_data(objectId)
+
+        # Add lightcurve data of current mCV as one row for the output DataFrame:
+        rows.append({
+                'objectId': objectId,
+                'time_range (yr)': round((np.max(data['i:jd'].values) - np.min(data['i:jd'].values)) / 365, 3),
+                'nb_of_points': len(data['i:jd'].values),
+                'i:jd': data['i:jd'].values,
+                'i:magpsf': data['i:magpsf'].values,
+                'i:sigmapsf': data['i:sigmapsf'].values
+        })
+
+    # Put all rows into a DataFrame:
+    lightcurve_data = pd.DataFrame(rows)
+
+    return lightcurve_data[lightcurve_data['nb_of_points'] >= cut].reset_index(drop=True)
+
+
+def extract_features(lightcurve_data: pd.DataFrame,
                      return_names: bool = False,
                      **kwargs
                      ) -> pd.DataFrame:
     """
-    Extracts statistical features from light curve data using the light_curve library.
+    Extracts statistical features from lightcurve data using the light_curve library.
 
     Parameters
     ---
-        light_curve_data: pd.DataFrame
+        lightcurve_data: pd.DataFrame
             A DataFrame containing lightcurve data with columns 'i:jd', 'i:magpsf', and 'i:sigmapsf'.  
             Each row should represent the lightcurve data for a single object.
 
@@ -95,7 +137,7 @@ def extract_features(light_curve_data: pd.DataFrame,
             If True, also returns the names of the extracted features. Defaults to False.
 
         **kwargs: optional
-            Additional keyword arguments to be passed to the light_curve extractor. Default arguments are sorted=True and check=False, supposing the light curve data is sorted by ascending Julian date and does not contain any missing values.
+            Additional keyword arguments to be passed to the light_curve extractor. Default arguments are sorted=True and check=False, supposing the light curve data is sorted by ascending Julian date and does not contain any missing values respectively.
 
     Returns
     ---
@@ -142,7 +184,7 @@ def extract_features(light_curve_data: pd.DataFrame,
         lc.StetsonK(),
         lc.WeightedMean()
     )
-    # Periodogram features require an extractor in which we will not pass the uncertainties:
+    # Periodogram features require a second extractor in which we will not pass the uncertainties:
     extractor2 = lc.Extractor(
         lc.Periodogram(peaks=3, features=[lc.Amplitude(),
                                           lc.BeyondNStd(nstd=1),
@@ -161,13 +203,13 @@ def extract_features(light_curve_data: pd.DataFrame,
     # The Fink API returns lightcurve data values with different types (float64 or float32).
     # The extractor requires jd, mag and err values to have the same types.
     # Setting everything to float64:
-    light_curve_data['i:jd'] = light_curve_data['i:jd'].apply(lambda arr: arr.astype(np.float64))
-    light_curve_data['i:magpsf'] = light_curve_data['i:magpsf'].apply(lambda arr: arr.astype(np.float64))
-    light_curve_data['i:sigmapsf'] = light_curve_data['i:sigmapsf'].apply(lambda arr: arr.astype(np.float64))
+    lightcurve_data['i:jd'] = lightcurve_data['i:jd'].apply(lambda arr: arr.astype(np.float64))
+    lightcurve_data['i:magpsf'] = lightcurve_data['i:magpsf'].apply(lambda arr: arr.astype(np.float64))
+    lightcurve_data['i:sigmapsf'] = lightcurve_data['i:sigmapsf'].apply(lambda arr: arr.astype(np.float64))
 
     # Extracting the features for each object in the lightcurve data:
     features = []
-    for _, row in tqdm2(light_curve_data.iterrows(), desc='Extracting features', total=len(light_curve_data)):
+    for _, row in tqdm2(lightcurve_data.iterrows(), desc='Extracting features', total=len(lightcurve_data)):
         features1 = extractor1(row['i:jd'],
                                row['i:magpsf'],
                                row['i:sigmapsf'],
@@ -177,7 +219,7 @@ def extract_features(light_curve_data: pd.DataFrame,
                                **default_kwargs)
         features.append(np.append(features1, features2))
 
-    output_df = light_curve_data.drop(columns=['i:jd', 'i:magpsf', 'i:sigmapsf'])
+    output_df = lightcurve_data.drop(columns=['i:jd', 'i:magpsf', 'i:sigmapsf'])
     output_df[feature_names] = np.vstack(features)
 
     if return_names:
@@ -242,11 +284,11 @@ def fink_lightcurve(objectId: str) -> None:
     Parameters
     ---
         objectId: str
-            The Id of the object to plot. Format: 'ZTF20abcdefg'
+            The Id of the object to plot. Format: 'ZTFXXaaaaaa'
     """
 
     # Get the light curve data of the specified object:
-    lightcurve = lc_data_from_api(objectId, columns="i:objectId,i:jd,i:magpsf,i:sigmapsf,i:fid")
+    lightcurve = single_object_lc_data(objectId, columns="i:objectId,i:jd,i:magpsf,i:sigmapsf,i:fid")
 
     # Extract time, magnitude, magnitude error and filter:
     t = lightcurve['i:jd'].values

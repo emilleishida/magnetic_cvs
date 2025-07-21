@@ -77,7 +77,7 @@ Fink science module to find magnetic cataclysmic variable stars. Algorithm based
 
 + You found the Fink lightcurve of one mCV is bogus or not representative of its class? Tag it with `mcvs.tag_bogus('BOGUS_MCV_ZTF_ID')`. This way, it will not be considered in the algorithm.
 
-+ Polars can also be tagged with `mcvs.tag_polars('POLAR_MCV_ZTF_ID')`. In the current state of the algorithm, polar tags do not change anything. But in the future, if enough polars and intermediate polars are discovered so that their feature distributions are significatively different, The algorithm could be splitted in two parts: one for polars and one for intermediate polars.
++ Polars can also be tagged with `mcvs.tag_polars('POLAR_MCV_ZTF_ID')`. In the current state of the algorithm, polar tags do not change anything. But in the future, if enough polars and intermediate polars are discovered so that their feature distributions are significatively different, the algorithm could be splitted into two parts: one for polars and one for intermediate polars.
 
 ### Lightcurve Visualization
 

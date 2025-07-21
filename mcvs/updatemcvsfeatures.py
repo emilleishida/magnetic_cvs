@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.feature_selection import mutual_info_classif
-from .utils import tqdm2, lc_data_from_api, extract_features, fit_scale
+from .utils import tqdm2, single_object_lc_data, extract_features, fit_scale
 from .managemcvs import get_data_path
 
 
@@ -30,10 +30,10 @@ def get_mcvs_lightcurve_data(cut: int = 100) -> pd.DataFrame:
             continue
 
         if not isinstance(row['objectId2'], str): # If the object has only one id, retrieve its lightcurve:
-            data = lc_data_from_api(row['objectId'])
+            data = single_object_lc_data(row['objectId'])
         else: # If the object has two ids, retrieve and merge both lightcurves:
-            data1 = lc_data_from_api(row['objectId'])
-            data2 = lc_data_from_api(row['objectId2'])
+            data1 = single_object_lc_data(row['objectId'])
+            data2 = single_object_lc_data(row['objectId2'])
             t = np.concatenate((data1['i:jd'].values, data2['i:jd'].values))
             m = np.concatenate((data1['i:magpsf'].values, data2['i:magpsf'].values))
             s = np.concatenate((data1['i:sigmapsf'].values, data2['i:sigmapsf'].values))
@@ -79,6 +79,8 @@ def rank_features_by_mutual_info(feature_names: list[str]) -> None:
             'Negative features file not found. Please download the file at https://zenodo.org/communities/fink/TEMPORARY-LINK-NEGATIVE-FEATURES and save it as "negative_features.parquet" under the data directory of this package. Run `mcvs.get_data_path()` to find where the directory is on your computer.'
         )
 
+    # For potentially better dimensionality reduction, compute again negative features on 1-year lightcurve but with only classified objects that are not mCVs (current negative features data is from many objects that are classified or unknown). Having more RRLyrae and Miras for example in these negatives may help so that the algorithm can better make the distinction between these and mCVs.
+
     # Scale features:
     positive_scaled, negative_scaled = fit_scale(positive, negative, columns=feature_names)
 
@@ -89,7 +91,7 @@ def rank_features_by_mutual_info(feature_names: list[str]) -> None:
         np.zeros(len(negative), dtype=int)
     ])
 
-    # MIC takes some time to run (~10s), keeping the user waiting:
+    # MIC can take some time to run (~10s), keeping the user waiting:
     print('Ranking features...')
 
     # Compute mutual information:
@@ -118,7 +120,7 @@ def update_mCVs_features(return_features: bool = False) -> None | pd.DataFrame:
 
     Returns
     ---
-        mCVs_features: pd.DataFrame
+        mCVs_features: pd.DataFrame, optional
             DataFrame containing the extracted features for mCVs lightcurves. Only returned if `return_features` is True.
     """
 

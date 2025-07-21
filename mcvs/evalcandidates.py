@@ -1,13 +1,13 @@
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-from .utils import fit_scale, get_data_path, lc_data_from_api, tqdm2, extract_features
+from .utils import fit_scale, get_data_path, many_objects_lc_data, extract_features
 
 
 def eval_candidates(unknown: pd.DataFrame,
                     *,
                     n_neighbors: int = 1,
-                    score_threshold: int = 1,
+                    score_threshold: int = 0,
                     max_candidates: int | None = None,
                     feature_names: list[str] | str | None = None,
                     kept_columns: list[str] = ['objectId']
@@ -20,19 +20,19 @@ def eval_candidates(unknown: pd.DataFrame,
     Parameters
     ---
         unknown: pd.DataFrame
-            DataFrame containing the features of all objects to evaluate.
+            DataFrame containing the features of all objects to evaluate. One object per row, one feature per column.
 
         n_neighbors: int, optional
             Number of neighbors for the nearest neighbors algorithm. Defaults to 1.
 
         score_threshold: int, optional
-            Minimum score for a candidate to be considered. Defaults to 1.
+            Minimum score for a candidate to be considered. Defaults to 0, meaning all objects are returned.
 
         max_candidates: int | None, optional
-            Maximum number of candidates to return. If None, returns all objects. Defaults to None.
+            Maximum number of candidates to return. If None, returns all objects with a score higher or equal to `score_threshold`. Defaults to None.
 
         feature_names: list[str] | str | None, optional
-            List of feature names to use for the nearest neighbors algorithm. Also accepts the value 'all' in which case all features will be considered. If None, default feature names are used based on mutual information scores. Defaults to None.
+            List of feature names to use for the nearest neighbors algorithm. Also accepts the value 'all' in which case all features (check all features list in the `extract_features` definition) will be considered. If None, default feature names are used based on mutual information scores. Defaults to None.
 
         kept_columns: list[str], optional
             List of columns to keep in the output DataFrame. Note that if different from default, it should still include 'objectId'. Defaults to ['objectId'].
@@ -131,51 +131,10 @@ def eval_candidates(unknown: pd.DataFrame,
         return out[out['score'] >= score_threshold]
 
 
-def get_lightcurve_data(objectIds: list[str],
-                        cut: int = 100
-                        ) -> pd.DataFrame:
-    """
-    Get full lightcurve data of given objects using Fink API.
-
-    Parameters
-    ---
-        objectIds: list[str]
-            List of ZTF object Ids for which to query lightcurves.
-
-        cut: int, optional
-            Quality cut for the number of points in the lightcurve. Defaults to 100, meaning only lightcurves with at least 100 points (considering the two bands) will be considered.
-
-    Returns
-    ---
-        lightcurve_data: pd.Dataframe
-            DataFrame containing the lightcurve data with columns: 'objectId', 'time_range (yr)' (the time range between first and last detection), 'nb_of_points' (the number of points in the lightcurve), 'i:jd', 'i:magpsf', 'i:sigmapsf'.
-    """
-
-    # Iterate over the Ids and retrieve lightcurves:
-    rows = []
-    for objectId in tqdm2(objectIds, desc='Retrieving lightcurves with Fink API'):
-        data = lc_data_from_api(objectId)
-
-        # Add lightcurve data of current mCV as one row for the output DataFrame:
-        rows.append({
-                'objectId': objectId,
-                'time_range (yr)': round((np.max(data['i:jd'].values) - np.min(data['i:jd'].values)) / 365, 3),
-                'nb_of_points': len(data['i:jd'].values),
-                'i:jd': data['i:jd'].values,
-                'i:magpsf': data['i:magpsf'].values,
-                'i:sigmapsf': data['i:sigmapsf'].values
-        })
-
-    # Put all rows into a DataFrame:
-    lightcurve_data = pd.DataFrame(rows)
-
-    return lightcurve_data[lightcurve_data['nb_of_points'] >= cut].reset_index(drop=True)
-
-
 def eval_distance(objectIds: list[str]) -> tuple[pd.DataFrame, pd.Series]:
     """
-    Evaluate distances to the center distribution of mCVs for given objects.  
-    **/!\\ This function uses the Fink API to concatenate full lightcurves. It is not designed for large queries.**  
+    Evaluate (euclidean) distances to the center distribution of mCVs for given objects.  
+    **/!\\ This function uses the Fink API to concatenate full lightcurves. It is thus not designed for large queries.**  
     This function is intended to be used on high-score objects obtained with the `eval_candidates` function, allowing to have more precise information on how likely candidates are bona-fide mCVs according to the current state of the algorithm.
 
     Parameters
@@ -202,7 +161,7 @@ def eval_distance(objectIds: list[str]) -> tuple[pd.DataFrame, pd.Series]:
     mCVs_features = pd.read_parquet(get_data_path('mCVs_features.parquet'))
 
     # Get full lightcurves of given objects:
-    unknown_lightcurves = get_lightcurve_data(objectIds)
+    unknown_lightcurves = many_objects_lc_data(objectIds)
     # Compute associated features:
     unknown_features, feature_names = extract_features(unknown_lightcurves, return_names=True)
 
